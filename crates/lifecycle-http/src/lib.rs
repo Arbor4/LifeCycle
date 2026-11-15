@@ -21,6 +21,8 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 
+mod mcp_admin;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -29,6 +31,8 @@ pub struct Settings {
     pub log_lines: usize,
     pub ready_timeout_ms: u64,
     pub compile_timeout_ms: u64,
+    /// "system" | "light" | "dark"
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -39,6 +43,7 @@ impl Default for Settings {
             log_lines: 5000,
             ready_timeout_ms: 120_000,
             compile_timeout_ms: 300_000,
+            theme: "system".into(),
         }
     }
 }
@@ -49,6 +54,7 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub diagnostics: Mutex<VecDeque<Value>>,
     pub groups: GroupStore,
+    pub port: u16,
 }
 
 impl AppState {
@@ -91,6 +97,7 @@ impl AppState {
             settings_path,
             diagnostics: Mutex::new(VecDeque::new()),
             groups,
+            port: 39517,
         }
     }
 
@@ -181,6 +188,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/projects/register", post(register_project))
         .route("/api/projects/{project}", delete(unregister_project))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/mcp", get(mcp_admin::info))
+        .route("/api/mcp/projects/{project}", put(mcp_admin::put_project))
+        .route("/api/mcp/client-config", post(mcp_admin::client_config))
         .route("/api/diagnostics", get(get_diagnostics))
         .route("/api/open-editor", post(open_editor))
         .route("/api/reveal-log", post(reveal_log))
@@ -291,7 +301,7 @@ async fn register_project(
             );
             std::fs::write(&toml_path, content)?;
         }
-        let project = state.ws.add(&toml_path)?;
+        let project = state.ws.register(&toml_path)?;
         Ok(json!({"project": project, "path": toml_path, "generated": generated}))
     })
     .await
@@ -593,7 +603,12 @@ async fn reload_config(
 ) -> ApiResult {
     traced(&state, "reload_config", async {
         let engine = state.ws.engine(&project)?;
-        engine.lock().await.reload_config()?;
+        let expose = {
+            let mut guard = engine.lock().await;
+            guard.reload_config()?;
+            guard.mcp_expose().to_vec()
+        };
+        state.ws.set_expose(&project, expose);
         Ok(json!({"ok": true}))
     })
     .await
@@ -887,7 +902,9 @@ async fn restart_group(
 }
 
 pub async fn serve(ws: Arc<Workspace>, port: u16) -> anyhow::Result<()> {
-    let state = Arc::new(AppState::new(ws));
+    let mut state = AppState::new(ws);
+    state.port = port;
+    let state = Arc::new(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     tracing::info!("lifecycle-http listening on 127.0.0.1:{port}");
     axum::serve(listener, router(state)).await?;

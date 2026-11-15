@@ -182,6 +182,47 @@ impl Config {
     }
 }
 
+/// Rewrite only the `[mcp]` table of a lifecycle.toml, keeping every other
+/// section, comment and formatting untouched.
+pub fn update_mcp_section(path: &Path, transport: &str, expose: &[String]) -> Result<()> {
+    if !matches!(transport, "stdio" | "http" | "both") {
+        return Err(Error::Config(format!(
+            "mcp.transport must be stdio, http or both (got '{transport}')"
+        )));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+
+    let mut array = toml_edit::Array::new();
+    for tool in expose {
+        array.push(tool.as_str());
+    }
+    let table = doc
+        .entry("mcp")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    let table = table
+        .as_table_mut()
+        .ok_or_else(|| Error::Config("mcp is not a table".into()))?;
+    table.set_implicit(false);
+    table["transport"] = toml_edit::value(transport);
+    table["expose"] = toml_edit::value(array);
+
+    // 校验改写后的文档仍可被引擎加载，避免把项目配置写坏。
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Paths derived from a config file location; everything resolves against the project root.
 #[derive(Debug, Clone)]
 pub struct ProjectPaths {

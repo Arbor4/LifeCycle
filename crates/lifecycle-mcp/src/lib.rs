@@ -32,6 +32,62 @@ pub const ALL_TOOLS: &[&str] = &[
     "reload_config",
 ];
 
+/// Whether a tool is allowed by an expose whitelist. An empty whitelist means
+/// "everything except reload_config"; `prefix*` patterns are supported.
+pub fn tool_matches(expose: &[String], tool: &str) -> bool {
+    if expose.is_empty() {
+        return tool != "reload_config";
+    }
+    expose.iter().any(|pattern| match pattern.strip_suffix('*') {
+        Some(prefix) => tool.starts_with(prefix),
+        None => pattern == tool,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolInfo {
+    pub name: &'static str,
+    /// Chinese summary shown in the console.
+    pub summary: &'static str,
+    pub group: &'static str,
+    /// "read" | "control" | "build" | "danger"
+    pub risk: &'static str,
+    pub default_exposed: bool,
+}
+
+pub fn tool_catalog() -> Vec<ToolInfo> {
+    let t = |name, summary, group, risk| ToolInfo {
+        name,
+        summary,
+        group,
+        risk,
+        default_exposed: name != "reload_config",
+    };
+    vec![
+        t("list_projects", "列出全部项目与 profile 状态", "查询", "read"),
+        t("get_status", "读取状态、PID、运行时长、最近编译", "查询", "read"),
+        t("get_logs", "按正则/游标增量读取运行或编译日志", "查询", "read"),
+        t("watch_logs", "标记日志游标，后续只返回增量", "查询", "read"),
+        t("start_project", "启动服务并等待就绪", "进程", "control"),
+        t("stop_project", "停止服务（进程组 SIGTERM→SIGKILL）", "进程", "control"),
+        t("restart_project", "重启服务，可选先快速编译", "进程", "control"),
+        t("compile_quick", "增量编译，返回结构化错误", "编译", "build"),
+        t("compile_partial", "只编译指定模块/目录", "编译", "build"),
+        t("compile_full", "清理后完整编译", "编译", "build"),
+        t("cancel_compile", "取消进行中的编译", "编译", "build"),
+        t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
+    ]
+}
+
+/// Tool names an AI client actually sees for a given whitelist.
+pub fn effective_tools(expose: &[String]) -> Vec<String> {
+    ALL_TOOLS
+        .iter()
+        .filter(|name| tool_matches(expose, name))
+        .map(|s| s.to_string())
+        .collect()
+}
+
 pub struct Workspace {
     core: Arc<lifecycle_core::workspace::Workspace>,
     watches: Mutex<HashMap<String, u64>>,
@@ -53,14 +109,7 @@ impl Workspace {
     }
 
     fn tool_allowed(&self, expose: &[String], tool: &str) -> bool {
-        if expose.is_empty() {
-            // reload_config is never exposed to AI by default.
-            return tool != "reload_config";
-        }
-        expose.iter().any(|pattern| match pattern.strip_suffix('*') {
-            Some(prefix) => tool.starts_with(prefix),
-            None => pattern == tool,
-        })
+        tool_matches(expose, tool)
     }
 
     fn any_allows(&self, tool: &str) -> bool {
@@ -477,7 +526,12 @@ impl LifeCycleServer {
             let project = self.ws.core.resolve_project(&req.project)?;
             self.check_expose(&project, "reload_config")?;
             let engine = self.ws.core.engine(&project)?;
-            engine.lock().await.reload_config()?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            self.ws.core.set_expose(&project, expose);
             Ok(json!({"ok": true}))
         })
         .await
@@ -489,6 +543,12 @@ impl ServerHandler for LifeCycleServer {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info.server_info = rmcp::model::Implementation::new("lifecycle", env!("CARGO_PKG_VERSION"))
+            .with_title("LifeCycle")
+            .with_description("本地项目生命周期管理：启停 / 三档编译 / 日志");
+        info.instructions = Some(
+            "命令只来自 lifecycle.toml；工作目录限制在项目根内；reload_config 默认不暴露。".into(),
+        );
         info
     }
 }

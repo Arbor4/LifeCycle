@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -6,30 +6,67 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::engine::Engine;
 use crate::error::{Error, Result};
+use crate::registry::Registry;
 
 /// Multi-project holder shared by MCP, HTTP and the desktop app.
-/// Projects can be registered/unregistered at runtime.
+/// Projects can be registered/unregistered at runtime; registrations persist
+/// in ~/.lifecycle/projects.json so they survive a restart.
 pub struct Workspace {
     engines: Mutex<HashMap<String, Arc<AsyncMutex<Engine>>>>,
     expose: Mutex<HashMap<String, Vec<String>>>,
+    paths: Mutex<HashMap<String, PathBuf>>,
+    registry: Registry,
+}
+
+fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 impl Workspace {
+    /// Load exactly the given configs (CLI / stdio MCP semantics).
     pub fn load(config_paths: &[PathBuf]) -> Result<Self> {
+        Self::build(config_paths, false)
+    }
+
+    /// Console semantics (desktop / HTTP): explicit configs plus everything
+    /// registered earlier via the UI, so services survive restarts.
+    pub fn load_console(config_paths: &[PathBuf]) -> Result<Self> {
+        Self::build(config_paths, true)
+    }
+
+    fn build(config_paths: &[PathBuf], with_registry: bool) -> Result<Self> {
+        let registry = Registry::new(Registry::default_path());
+        if with_registry {
+            let _ = registry.prune();
+        }
         let ws = Self {
             engines: Mutex::new(HashMap::new()),
             expose: Mutex::new(HashMap::new()),
+            paths: Mutex::new(HashMap::new()),
+            registry,
         };
+        let mut loaded: HashSet<PathBuf> = HashSet::new();
         for path in config_paths {
             ws.add(path)?;
+            loaded.insert(canonical(path));
         }
-        if ws.engines.lock().unwrap().is_empty() {
-            return Err(Error::Config("no projects loaded".into()));
+        if with_registry {
+            for path in ws.registry.paths() {
+                if loaded.contains(&canonical(&path)) {
+                    continue;
+                }
+                match ws.add(&path) {
+                    Ok(_) => {
+                        loaded.insert(canonical(&path));
+                    }
+                    Err(e) => eprintln!("lifecycle: 跳过已注册项目 {}: {e}", path.display()),
+                }
+            }
         }
         Ok(ws)
     }
 
-    /// Register a project from its lifecycle.toml at runtime.
+    /// Register a project from its lifecycle.toml at runtime (in-memory only).
     pub fn add(&self, config_path: &Path) -> Result<String> {
         let engine = Engine::new(config_path)?;
         let name = engine.project_name().to_string();
@@ -41,7 +78,18 @@ impl Workspace {
             .lock()
             .unwrap()
             .insert(name.clone(), engine.mcp_expose().to_vec());
+        self.paths
+            .lock()
+            .unwrap()
+            .insert(name.clone(), config_path.to_path_buf());
         engines.insert(name.clone(), Arc::new(AsyncMutex::new(engine)));
+        Ok(name)
+    }
+
+    /// Register and remember across restarts.
+    pub fn register(&self, config_path: &Path) -> Result<String> {
+        let name = self.add(config_path)?;
+        self.registry.add(config_path)?;
         Ok(name)
     }
 
@@ -51,6 +99,9 @@ impl Workspace {
             .remove(name)
             .ok_or_else(|| Error::NotFound(format!("project '{name}'")))?;
         self.expose.lock().unwrap().remove(name);
+        if let Some(path) = self.paths.lock().unwrap().remove(name) {
+            let _ = self.registry.remove(&path);
+        }
         Ok(())
     }
 
@@ -68,6 +119,7 @@ impl Workspace {
         match project {
             Some(p) if engines.contains_key(p) => Ok(p.clone()),
             Some(p) => Err(Error::NotFound(format!("project '{p}'"))),
+            None if engines.is_empty() => Err(Error::NotFound("no projects registered".into())),
             None if engines.len() == 1 => Ok(engines.keys().next().unwrap().clone()),
             None => Err(Error::Config(
                 "multiple projects loaded; 'project' is required".into(),
@@ -88,6 +140,11 @@ impl Workspace {
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
+    }
+
+    /// Update the cached expose whitelist after a config reload.
+    pub fn set_expose(&self, project: &str, expose: Vec<String>) {
+        self.expose.lock().unwrap().insert(project.to_string(), expose);
     }
 
     pub fn expose(&self, project: &str) -> Vec<String> {

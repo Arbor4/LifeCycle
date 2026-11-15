@@ -19,10 +19,10 @@ fn read_json(path: &Path) -> Option<Value> {
 }
 
 fn vite_port(root: &Path) -> Option<u16> {
+    let re = regex::Regex::new(r"port:\s*(\d+)").ok()?;
     for dir in [root.to_path_buf(), root.join("src/web")] {
         for name in ["vite.config.ts", "vite.config.js", "vite.config.mjs"] {
             if let Ok(text) = std::fs::read_to_string(dir.join(name)) {
-                let re = regex::Regex::new(r"port:\s*(\d+)").unwrap();
                 if let Some(c) = re.captures(&text) {
                     return c[1].parse().ok();
                 }

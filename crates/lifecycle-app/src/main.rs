@@ -23,6 +23,9 @@ struct Cli {
     /// 本地 API 端口
     #[arg(long, default_value_t = 39517)]
     port: u16,
+    /// 以 MCP stdio 服务器运行（供 Claude / Cursor 等客户端拉起），不启动界面
+    #[arg(long)]
+    mcp_stdio: bool,
 }
 
 fn main() {
@@ -40,10 +43,10 @@ fn main() {
     if let Some(dir) = cli.scan {
         configs.extend(scan_projects(&dir));
     }
-    if configs.is_empty() {
+    if configs.is_empty() && PathBuf::from("lifecycle.toml").is_file() {
         configs.push(PathBuf::from("lifecycle.toml"));
     }
-    let ws = match Workspace::load(&configs) {
+    let ws = match Workspace::load_console(&configs) {
         Ok(ws) => Arc::new(ws),
         Err(e) => {
             eprintln!("加载项目失败: {e}");
@@ -51,6 +54,15 @@ fn main() {
         }
     };
     let port = cli.port;
+
+    if cli.mcp_stdio {
+        let runtime = tokio::runtime::Runtime::new().expect("创建 tokio 运行时失败");
+        if let Err(e) = runtime.block_on(lifecycle_mcp::serve_stdio(configs)) {
+            eprintln!("MCP stdio 服务失败: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())

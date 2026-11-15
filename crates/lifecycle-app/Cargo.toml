@@ -10,6 +10,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 lifecycle-core.workspace = true
 lifecycle-http.workspace = true
+lifecycle-mcp.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

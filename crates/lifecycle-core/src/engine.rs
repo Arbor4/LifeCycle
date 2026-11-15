@@ -92,6 +92,10 @@ impl Engine {
         &self.config.mcp.expose
     }
 
+    pub fn mcp_transport(&self) -> &str {
+        &self.config.mcp.transport
+    }
+
     pub fn log_len(&self, profile: &str, source: &str) -> Result<u64> {
         self.config.profile(profile)?;
         Ok(std::fs::metadata(self.hub.path(profile, source))

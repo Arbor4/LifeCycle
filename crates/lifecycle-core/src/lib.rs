@@ -6,6 +6,7 @@ pub mod error;
 pub mod groups;
 pub mod logs;
 pub mod process;
+pub mod registry;
 pub mod workspace;
 
 pub use config::Config;

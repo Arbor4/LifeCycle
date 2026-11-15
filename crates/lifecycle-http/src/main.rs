@@ -32,9 +32,9 @@ async fn main() -> anyhow::Result<()> {
     if let Some(dir) = cli.scan {
         configs.extend(scan_projects(&dir));
     }
-    if configs.is_empty() {
+    if configs.is_empty() && PathBuf::from("lifecycle.toml").is_file() {
         configs.push(PathBuf::from("lifecycle.toml"));
     }
-    let ws = Arc::new(Workspace::load(&configs)?);
+    let ws = Arc::new(Workspace::load_console(&configs)?);
     lifecycle_http::serve(ws, cli.port).await
 }

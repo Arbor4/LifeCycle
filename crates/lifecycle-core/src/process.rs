@@ -76,8 +76,11 @@ pub fn spawn(profile_name: &str, profile: &Profile, paths: &ProjectPaths) -> Res
     let err = out.try_clone()?;
 
     let mut cmd = shell_command(&profile.start.command);
-    cmd.current_dir(paths.workdir(profile))
-        .envs(&profile.env)
+    cmd.current_dir(paths.workdir(profile));
+    // GUI（Finder/launchd）启动时 PATH 极简，补上常见工具链，否则 npm/cargo 找不到。
+    #[cfg(unix)]
+    cmd.env("PATH", toolchain_path());
+    cmd.envs(&profile.env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(out))
         .stderr(std::process::Stdio::from(err))
@@ -107,6 +110,51 @@ fn shell_command(command: &str) -> Command {
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(command);
     cmd
+}
+
+/// Prepend well-known user toolchain dirs to PATH so services started from a
+/// GUI-launched manager still find node / npm / cargo / mvn.
+#[cfg(unix)]
+fn toolchain_path() -> String {
+    use std::path::PathBuf;
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".cargo/bin"));
+        dirs.push(home.join(".volta/bin"));
+        dirs.push(home.join(".local/bin"));
+        if let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            let mut versions: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect();
+            versions.sort_by_key(|p| {
+                p.file_name()
+                    .map(|n| {
+                        n.to_string_lossy()
+                            .trim_start_matches('v')
+                            .split('.')
+                            .next()
+                            .and_then(|s| s.parse::<u32>().ok())
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0)
+            });
+            if let Some(v) = versions.last() {
+                dirs.push(v.join("bin"));
+            }
+        }
+    }
+    dirs.push(PathBuf::from("/opt/homebrew/bin"));
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    let mut parts: Vec<String> = dirs
+        .iter()
+        .filter(|d| d.is_dir())
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect();
+    parts.push(std::env::var("PATH").unwrap_or_default());
+    parts.join(":")
 }
 
 #[cfg(not(unix))]
