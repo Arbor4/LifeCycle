@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="LifeCycle logo">
+  <defs>
+    <linearGradient id="lc-a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1fb583"/>
+      <stop offset="1" stop-color="#2f7fe0"/>
+    </linearGradient>
+    <linearGradient id="lc-b" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f7fe0"/>
+      <stop offset="1" stop-color="#39c6e0"/>
+    </linearGradient>
+    <linearGradient id="lc-core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#31d49f"/>
+      <stop offset="1" stop-color="#4da3ff"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="7.5">
+    <path stroke="url(#lc-a)" d="M12 48a36 36 0 0 1 36-36 39 39 0 0 1 26.96 10.96L84 32"/>
+    <path stroke="url(#lc-a)" d="M84 12v20h-20"/>
+    <path stroke="url(#lc-b)" d="M84 48a36 36 0 0 1-36 36 39 39 0 0 1-26.96-10.96L12 64"/>
+    <path stroke="url(#lc-b)" d="M32 64H12v20"/>
+  </g>
+  <path fill="url(#lc-core)" d="M40 33.5 63 48 40 62.5Z"/>
+</svg>
