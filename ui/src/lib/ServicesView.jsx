@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api, profilePath } from "./api.js";
 import { pushToast } from "./toast.js";
 import { copyText } from "./clipboard.js";
+import { useMediaQuery } from "./useMediaQuery.js";
 import { STATE_LABEL, uptime } from "./format.js";
 import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
@@ -36,13 +37,15 @@ export default function ServicesView({
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState({});
   const [confirming, setConfirming] = useState(null);
-  const [statsCollapsed, setStatsCollapsed] = useState(() => {
+  const isNarrow = useMediaQuery("(max-width: 767px)");
+  const readStatsCollapsed = () => {
     try {
       return localStorage.getItem("lifecycle-stats-collapsed") === "1";
     } catch {
       return false;
     }
-  });
+  };
+  const [statsCollapsed, setStatsCollapsed] = useState(readStatsCollapsed);
   const [showRegister, setShowRegister] = useState(false);
   const [now, setNow] = useState(Date.now());
   const searchRef = useRef(null);
@@ -58,13 +61,23 @@ export default function ServicesView({
     localStorage.setItem(VIEW_KEY, JSON.stringify({ q, statusFilter, sort }));
   }, [q, statusFilter, sort]);
 
+  // 窄屏默认折叠概览把空间让给列表；回到宽屏恢复用户持久化偏好。
+  // 持久化只发生在用户手动切换时，自动折叠不覆盖偏好。
   useEffect(() => {
-    try {
-      localStorage.setItem("lifecycle-stats-collapsed", statsCollapsed ? "1" : "0");
-    } catch {
-      // ignore
-    }
-  }, [statsCollapsed]);
+    setStatsCollapsed(isNarrow ? true : readStatsCollapsed());
+  }, [isNarrow]);
+
+  function toggleStats() {
+    setStatsCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("lifecycle-stats-collapsed", next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!confirming) return;
@@ -131,7 +144,10 @@ export default function ServicesView({
     const needle = q.trim().toLowerCase();
     const out = rows.filter((r) => {
       if (statusFilter !== "all" && r.state !== statusFilter) return false;
-      if (needle && !r.key.toLowerCase().includes(needle)) return false;
+      if (needle) {
+        const hay = `${r.key} ${r.service ?? ""} ${r.env_name ?? ""}`.toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
       return true;
     });
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -332,18 +348,61 @@ export default function ServicesView({
   return (
     <div className="view relative flex h-full min-h-0 flex-col">
       <div className="border-b border-[var(--line)] bg-[var(--bg1)]">
-        <div className="flex items-center gap-2 px-3 pt-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)]">
-            {t("状态概览")}
-          </span>
-          <span className="mono text-[11px] text-[var(--dim)]">
-            {t("{running}/{total} 运行中", { running: stats.running, total: rows.length })}
-          </span>
-          <span className="flex-1" />
+        <div className="flex items-center gap-1.5 px-2 py-1 sm:gap-2 sm:px-3 sm:py-0 sm:pt-2">
+          {statsCollapsed ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              {tiles.map((tile) => {
+                const tone = tile.tone === "dim" ? "mut" : tile.tone;
+                const active = statusFilter === tile.filter;
+                const chip = (
+                  <>
+                    <span
+                      className="h-1.5 w-1.5 flex-none rounded-full"
+                      style={{ background: `var(--${tone})` }}
+                    />
+                    <span className="mono font-semibold" style={{ color: `var(--${tone})` }}>
+                      {tile.value}
+                    </span>
+                    <span className="hidden text-[var(--dim)] sm:inline">{tile.label}</span>
+                  </>
+                );
+                const cls = `flex items-center gap-1.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-all sm:px-2 ${
+                  active
+                    ? "border-[var(--blu)] bg-[var(--blu-soft)] ring-1 ring-[var(--blu)]"
+                    : "border-[var(--line)] hover:border-[var(--line3)] hover:bg-[var(--bg2)]"
+                }`;
+                return tile.filter ? (
+                  <button
+                    key={tile.label}
+                    type="button"
+                    className={cls}
+                    onClick={() => setStatusFilter(statusFilter === tile.filter ? "all" : tile.filter)}
+                    title={t("按「{label}」筛选", { label: tile.label })}
+                  >
+                    {chip}
+                  </button>
+                ) : (
+                  <span key={tile.label} className={cls} title={t("最近一次编译失败的服务数")}>
+                    {chip}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              <span className="hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] sm:inline">
+                {t("状态概览")}
+              </span>
+              <span className="mono hidden text-[11px] text-[var(--dim)] sm:inline">
+                {t("{running}/{total} 运行中", { running: stats.running, total: rows.length })}
+              </span>
+              <span className="flex-1" />
+            </>
+          )}
           <button
             type="button"
             className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--dim)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
-            onClick={() => setStatsCollapsed((v) => !v)}
+            onClick={toggleStats}
             aria-expanded={!statsCollapsed}
             title={statsCollapsed ? t("展开概览") : t("折叠概览")}
           >
@@ -360,12 +419,12 @@ export default function ServicesView({
           }`}
         >
           <div className="overflow-hidden">
-            <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3 sm:gap-2 sm:p-3 lg:grid-cols-5">
         {tiles.map((tile) => {
           const inner = (
             <>
               <span
-                className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-lg sm:h-8 sm:w-8"
                 style={{
                   background: `color-mix(in oklab, var(--${tile.tone === "dim" ? "mut" : tile.tone}) 14%, transparent)`,
                   color: `var(--${tile.tone === "dim" ? "mut" : tile.tone})`,
@@ -374,13 +433,13 @@ export default function ServicesView({
                 <Icon name={tile.icon} size={15} />
               </span>
               <span className="min-w-0">
-                <span className="mono block text-lg font-semibold leading-tight">{tile.value}</span>
+                <span className="mono block text-base font-semibold leading-tight sm:text-lg">{tile.value}</span>
                 <span className="block truncate text-[11px] text-[var(--dim)]">{tile.label}</span>
               </span>
             </>
           );
           const isFilterActive = statusFilter === tile.filter;
-          const cls = `panel flex items-center gap-3 px-3 py-2 text-left transition-all ${
+          const cls = `panel flex items-center gap-2 px-2 py-1.5 text-left transition-all sm:gap-3 sm:px-3 sm:py-2 ${
             isFilterActive
               ? "!border-[var(--blu)] shadow-sm bg-[var(--bg2)] ring-1 ring-[var(--blu)]"
               : "hover:border-[var(--line3)]"
@@ -403,56 +462,10 @@ export default function ServicesView({
             </div>
           </div>
         </div>
-        <div
-          className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-            statsCollapsed ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-          }`}
-        >
-          <div className="overflow-hidden">
-            <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2 pt-1">
-              {tiles.map((tile) => {
-                const tone = tile.tone === "dim" ? "mut" : tile.tone;
-                const active = statusFilter === tile.filter;
-                const chip = (
-                  <>
-                    <span
-                      className="h-1.5 w-1.5 flex-none rounded-full"
-                      style={{ background: `var(--${tone})` }}
-                    />
-                    <span className="mono font-semibold" style={{ color: `var(--${tone})` }}>
-                      {tile.value}
-                    </span>
-                    <span className="text-[var(--dim)]">{tile.label}</span>
-                  </>
-                );
-                const cls = `flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] transition-all ${
-                  active
-                    ? "border-[var(--blu)] bg-[var(--blu-soft)] ring-1 ring-[var(--blu)]"
-                    : "border-[var(--line)] hover:border-[var(--line3)] hover:bg-[var(--bg2)]"
-                }`;
-                return tile.filter ? (
-                  <button
-                    key={tile.label}
-                    type="button"
-                    className={cls}
-                    onClick={() => setStatusFilter(statusFilter === tile.filter ? "all" : tile.filter)}
-                    title={t("按「{label}」筛选", { label: tile.label })}
-                  >
-                    {chip}
-                  </button>
-                ) : (
-                  <span key={tile.label} className={cls} title={t("最近一次编译失败的服务数")}>
-                    {chip}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-2.5">
-        <h1 className="flex items-center gap-2 text-base font-semibold">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] px-2 py-1.5 sm:gap-2 sm:px-4 sm:py-2.5">
+        <h1 className="hidden items-center gap-2 text-base font-semibold md:flex">
           <Icon name="list" size={16} className="text-[var(--blu)]" />
           {selectedProject ? (
             <span className="flex items-center gap-1.5">
@@ -464,15 +477,15 @@ export default function ServicesView({
             t("全部服务列表")
           )}
         </h1>
-        <span className="mono text-xs text-[var(--mut)]">
+        <span className="mono hidden text-xs text-[var(--mut)] md:inline">
           {t("{running}/{total} 运行中", { running: stats.running, total: rows.length })}
         </span>
         <span className="flex-1" />
-        <div className="relative">
+        <div className="relative min-w-0 flex-1 sm:flex-none">
           <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
             ref={searchRef}
-            className="input w-52 pl-8! pr-7!"
+            className="input w-full pl-8! pr-7! sm:w-52"
             placeholder={t("搜索服务…  /")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -488,22 +501,22 @@ export default function ServicesView({
             </button>
           )}
         </div>
-        <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select className="input flex-none" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="all">{t("全部状态")}</option>
           <option value="running">{t("运行中")}</option>
           <option value="starting">{t("启动中")}</option>
           <option value="crashed">{t("崩溃")}</option>
           <option value="idle">{t("未启动")}</option>
         </select>
-        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，在当前项目下配置新服务")}>
+        <button className="btn btn-success flex-none" onClick={openAddModal} title={t("快捷键 n，在当前项目下配置新服务")}>
           <Icon name="plus" />
-          {t("添加服务")}
+          <span className="hidden sm:inline">{t("添加服务")}</span>
         </button>
       </div>
 
       {projects.length > 1 && (
-        <div className="flex items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg2)]/60 px-4 py-1.5 overflow-x-auto text-xs">
-          <span className="text-[11px] font-semibold text-[var(--dim)] mr-1 flex-none">{t("项目切换:")}</span>
+        <div className="flex items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1 overflow-x-auto text-xs sm:px-4 sm:py-1.5">
+          <span className="mr-1 hidden flex-none text-[11px] font-semibold text-[var(--dim)] sm:inline">{t("项目切换:")}</span>
           <button
             type="button"
             className={`rounded-full px-2.5 py-0.5 transition-colors flex-none ${
@@ -825,7 +838,7 @@ export default function ServicesView({
           <span className="kbd">n</span> {t("新建")}
         </span>
         <span className="flex-1" />
-        <span>{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
+        <span className="hidden md:inline">{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
       </div>
 
       {renamingService && (

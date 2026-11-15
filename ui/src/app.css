@@ -635,6 +635,13 @@ input[type="checkbox"]:not(.cb-input) {
   width: 100%;
   border-collapse: collapse;
 }
+/* 窄屏紧凑行高：把垂直空间让给服务列表本体 */
+@media (max-width: 767px) {
+  .table th,
+  .table td {
+    padding: 5px 8px;
+  }
+}
 .table th {
   position: sticky;
   top: 0;

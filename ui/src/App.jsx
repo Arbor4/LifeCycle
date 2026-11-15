@@ -299,7 +299,7 @@ export default function App() {
 
       <main className="flex min-w-0 flex-1 flex-col">
         {isMobile && (
-          <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-2">
+          <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-1.5">
             <button
               type="button"
               className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
