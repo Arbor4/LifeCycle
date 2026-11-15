@@ -37,6 +37,7 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const [showPartial, setShowPartial] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [registerKind, setRegisterKind] = useState("project");
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
   const [online, setOnline] = useState(false);
 
@@ -220,7 +221,10 @@ export default function App() {
           setView(v);
           if (v !== "services") setSelectedProject(null);
         }}
-        onOpenAddProject={() => setShowRegister(true)}
+        onOpenAddProject={() => {
+          setRegisterKind("project");
+          setShowRegister(true);
+        }}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -229,7 +233,10 @@ export default function App() {
             projects={projects}
             selectedProject={selectedProject}
             onSelectProject={setSelectedProject}
-            onOpenAdd={() => setShowRegister(true)}
+            onOpenAdd={() => {
+              setRegisterKind("service");
+              setShowRegister(true);
+            }}
             onOpen={openDetail}
           />
         ) : view === "groups" ? (
@@ -409,6 +416,7 @@ export default function App() {
       )}
       {showRegister && (
         <RegisterModal
+          kind={registerKind}
           onClose={() => setShowRegister(false)}
           onSaved={async (newProject) => {
             setShowRegister(false);

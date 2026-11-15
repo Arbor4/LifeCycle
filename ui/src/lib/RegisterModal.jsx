@@ -5,7 +5,7 @@ import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Modal from "./Modal.jsx";
 
-export default function RegisterModal({ onClose, onSaved }) {
+export default function RegisterModal({ kind = "project", onClose, onSaved }) {
   const { t } = useI18n();
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
@@ -102,14 +102,16 @@ export default function RegisterModal({ onClose, onSaved }) {
 
   return (
     <Modal
-      title={t("添加 / 导入项目")}
+      title={kind === "service" ? t("添加 / 导入服务") : t("添加 / 导入项目")}
       icon="folder"
       tone="grn"
       width={600}
       onClose={onClose}
-      subtitle={t(
-        "选择或填入项目文件夹。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。"
-      )}
+      subtitle={
+        kind === "service"
+          ? t("选择或填入服务目录。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。")
+          : t("选择或填入项目文件夹。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。")
+      }
       footer={
         <>
           <button type="button" className="btn" onClick={onClose}>

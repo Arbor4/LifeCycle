@@ -327,9 +327,9 @@ export default function ServicesView({
           <option value="crashed">{t("崩溃")}</option>
           <option value="idle">{t("未启动")}</option>
         </select>
-        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，可直接选择文件夹导入项目")}>
+        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，可直接选择文件夹导入服务")}>
           <Icon name="plus" />
-          {t("添加项目")}
+          {t("添加服务")}
         </button>
       </div>
 
@@ -555,7 +555,7 @@ export default function ServicesView({
             </p>
             <button className="btn btn-success btn-sm" onClick={openAddModal}>
               <Icon name="plus" />
-              {t("添加第一个项目")}
+              {t("添加第一个服务")}
             </button>
           </div>
         )}
@@ -573,7 +573,7 @@ export default function ServicesView({
         <span>{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
       </div>
 
-      {showRegister && <RegisterModal onClose={() => setShowRegister(false)} onSaved={() => setShowRegister(false)} />}
+      {showRegister && <RegisterModal kind="service" onClose={() => setShowRegister(false)} onSaved={() => setShowRegister(false)} />}
     </div>
   );
 }
