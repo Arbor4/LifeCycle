@@ -189,7 +189,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/groups/{id}/stop", post(stop_group))
         .route("/api/groups/{id}/restart", post(restart_group))
         .route("/api/projects/{project}/reload", post(reload_config))
-        .route("/api/projects/{project}/config", get(get_config))
+        .route("/api/projects/{project}/config", get(get_config).put(save_config))
         .route("/api/projects/{project}/modules", get(list_modules))
         .route(
             "/api/projects/{project}/profiles/{profile}/status",
@@ -1096,6 +1096,43 @@ async fn get_config(
     let path = engine.lock().await.config_path().to_path_buf();
     let content = std::fs::read_to_string(&path)?;
     Ok(Json(json!({"path": path, "content": content})))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SaveConfigBody {
+    content: String,
+}
+
+async fn save_config(
+    State(state): State<Arc<AppState>>,
+    Path(project): Path<String>,
+    Json(body): Json<SaveConfigBody>,
+) -> ApiResult {
+    traced(
+        &state,
+        "save_config",
+        json!({"project": project, "bytes": body.content.len()}),
+        async {
+            // 先整份解析+校验（含 workdir confinement），失败则不落盘
+            lifecycle_core::config::parse_config(&body.content)?;
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let tmp = path.with_extension("toml.tmp");
+            std::fs::write(&tmp, &body.content)?;
+            std::fs::rename(&tmp, &path)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "path": path}))
+        },
+    )
+    .await
 }
 
 async fn reload_config(

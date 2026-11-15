@@ -48,6 +48,10 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
   const [savingForm, setSavingForm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [rawEdit, setRawEdit] = useState(false);
+  const [rawDraft, setRawDraft] = useState("");
+  const [rawSaving, setRawSaving] = useState(false);
+  const [rawErr, setRawErr] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [stale, setStale] = useState(false);
   const dirtyRef = useRef(false);
@@ -120,11 +124,42 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
       const fresh = data?.find((p) => p.project === project)?.profiles.find((p) => p.profile === profile);
       applySeed(fresh ?? current);
       await loadConfig();
+      setRawEdit(false);
+      setRawErr(null);
       pushToast(t("已与配置文件同步"), { kind: "success", duration: 2000 });
     } catch (e) {
       pushToast(e.message, { kind: "error" });
     } finally {
       setSyncing(false);
+    }
+  }
+
+  function startRawEdit() {
+    setRawDraft(cfg?.content ?? "");
+    setRawErr(null);
+    setRawEdit(true);
+    setShowRaw(true);
+  }
+
+  async function saveRaw() {
+    if (rawSaving || !cfg) return;
+    setRawSaving(true);
+    setRawErr(null);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project)}/config`, {
+        method: "PUT",
+        body: JSON.stringify({ content: rawDraft }),
+      });
+      pushToast(t("配置原文已保存并热加载"), { kind: "success" });
+      setRawEdit(false);
+      await loadConfig();
+      const data = await onRefresh();
+      const fresh = data?.find((p) => p.project === project)?.profiles.find((p) => p.profile === profile);
+      if (fresh) applySeed(fresh);
+    } catch (e) {
+      setRawErr(e.message);
+    } finally {
+      setRawSaving(false);
     }
   }
 
@@ -399,6 +434,43 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
               <span className="mono text-[11px] text-[var(--dim)] truncate select-all">{cfg.path}</span>
             </div>
             <div className="flex items-center gap-1.5 flex-none">
+              {rawEdit && rawDraft !== cfg.content && (
+                <span className="rounded-full bg-[var(--amb-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--amb)]">
+                  {t("未保存")}
+                </span>
+              )}
+              {rawEdit ? (
+                <>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    disabled={rawSaving}
+                    onClick={() => {
+                      setRawEdit(false);
+                      setRawErr(null);
+                    }}
+                  >
+                    {t("取消")}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-primary flex items-center gap-1.5"
+                    disabled={rawSaving || rawDraft === cfg.content}
+                    onClick={saveRaw}
+                    title={t("校验通过后整份写盘并热加载（Ctrl/⌘+S）")}
+                  >
+                    {rawSaving ? <span className="spinner" /> : <Icon name="save" size={12} />}
+                    {t("保存原文")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-sm btn-ghost flex items-center gap-1.5"
+                  onClick={startRawEdit}
+                  title={t("直接编辑 lifecycle.toml 全文")}
+                >
+                  <Icon name="edit" size={12} />
+                  {t("编辑原文")}
+                </button>
+              )}
               <button
                 className="btn btn-sm btn-ghost"
                 onClick={() =>
@@ -412,27 +484,61 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
               <button
                 className="btn btn-sm btn-ghost"
                 onClick={async () => {
-                  if (await copyText(cfg.content)) pushToast(t("配置已复制"), { kind: "success", duration: 2500 });
+                  if (await copyText(rawEdit ? rawDraft : cfg.content)) pushToast(t("配置已复制"), { kind: "success", duration: 2500 });
                 }}
                 title={t("复制配置文件内容")}
               >
                 <Icon name="copy" size={12} />
                 {t("复制")}
               </button>
-              <button
-                className="btn btn-sm btn-ghost"
-                onClick={() => setShowRaw((v) => !v)}
-              >
-                <Icon name={showRaw ? "down" : "right"} size={12} />
-                {showRaw ? t("折叠原文") : t("展开原文")}
-              </button>
+              {!rawEdit && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setShowRaw((v) => !v)}
+                >
+                  <Icon name={showRaw ? "down" : "right"} size={12} />
+                  {showRaw ? t("折叠原文") : t("展开原文")}
+                </button>
+              )}
             </div>
           </div>
 
-          {showRaw && (
-            <pre className="well mono overflow-x-auto p-3 text-xs leading-5 text-[var(--log-info)] rounded-lg border border-[var(--line)]">
-              {cfg.content}
-            </pre>
+          {rawErr && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--red)] bg-[var(--red-soft)] px-3 py-2 text-xs text-[var(--red)]">
+              <Icon name="warn" size={13} className="mt-0.5 flex-none" />
+              <span className="mono whitespace-pre-wrap break-all">{rawErr}</span>
+            </div>
+          )}
+
+          {rawEdit ? (
+            <>
+              <textarea
+                className="well mono w-full resize-y rounded-lg border border-[var(--line)] p-3 text-xs leading-5 text-[var(--log-info)] outline-none focus:border-[var(--blu)]"
+                style={{ minHeight: 280 }}
+                rows={Math.min(28, rawDraft.split("\n").length + 2)}
+                spellCheck={false}
+                value={rawDraft}
+                onChange={(e) => {
+                  setRawDraft(e.target.value);
+                  setRawErr(null);
+                }}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+                    e.preventDefault();
+                    saveRaw();
+                  }
+                }}
+              />
+              <p className="mt-2 text-[11px] leading-4 text-[var(--dim)]">
+                {t("原文保存会整份替换 lifecycle.toml（注释需自行保留）；保存前自动校验，失败不写盘。")}
+              </p>
+            </>
+          ) : (
+            showRaw && (
+              <pre className="well mono overflow-x-auto p-3 text-xs leading-5 text-[var(--log-info)] rounded-lg border border-[var(--line)]">
+                {cfg.content}
+              </pre>
+            )
           )}
         </div>
       ) : err ? (

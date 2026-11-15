@@ -433,6 +433,13 @@ const EN = {
     "Truncates the on-disk log files for the selected scope. History cannot be recovered; running services keep appending new output.",
   "日志已清空（{scope}，释放 {kb} KB）": "Logs cleared ({scope}, freed {kb} KB)",
   全部来源: "all sources",
+  编辑原文: "Edit raw",
+  保存原文: "Save raw",
+  "直接编辑 lifecycle.toml 全文": "Edit the full lifecycle.toml text",
+  "校验通过后整份写盘并热加载（Ctrl/⌘+S）": "Validate, write the whole file and hot-reload (Ctrl/⌘+S)",
+  配置原文已保存并热加载: "Raw config saved and hot-reloaded",
+  "原文保存会整份替换 lifecycle.toml（注释需自行保留）；保存前自动校验，失败不写盘。":
+    "Saving raw replaces lifecycle.toml wholesale (keep comments yourself); validated before write, nothing is written on failure.",
   添加第一个项目: "Add your first project",
   添加第一个服务: "Add your first service",
   "添加 / 导入服务": "Add / import service",

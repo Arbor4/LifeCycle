@@ -253,7 +253,7 @@ The **Groups** page batches any number of `project/profile` pairs (e.g. "backend
 | Detail | Status card + start / fast-start / stop / restart + quick / partial / full compile (cancellable while running); tabs are service-scoped only: Logs / Errors / Config |
 | Logs | Run-log / build-log toggle; level + regex filters; search with Enter / Shift+Enter jump; auto-scroll; clear screen (display only); clear logs (truncates on-disk files, scope-confirm modal); open log file; color toggle |
 | Errors | Structured diagnostics, click to jump to editor line/col; raw output as fallback |
-| Config | Full lifecycle.toml with open-in-editor / copy |
+| Config | Structured command form + raw lifecycle.toml editor (validate-before-write, hot reload, Ctrl/⌘+S); open-in-editor / copy |
 | Global settings | Language, theme, notification switch, editor jump command (VS Code/Cursor/IntelliJ/Vim presets), log buffer & timeouts; dirty-state save bar |
 | MCP → Call log | Global last-200 tool calls (shared by UI & MCP): success-rate / avg / MCP-count stats, filter by source and result, duration bars, live-refresh toggle; clicking a row opens a detail dialog with the full request & response JSON (copyable) |
 
@@ -428,6 +428,7 @@ node scripts/mcp-e2e.mjs        # MCP stdio all-tools end-to-end
 node scripts/mcp-admin-e2e.mjs  # MCP register/configure/group tools end-to-end
 node scripts/http-add-service-e2e.mjs  # add-service API: create/validate/start/cleanup
 node scripts/http-clear-logs-e2e.mjs  # clear-logs API: truncate/keep-appending/scope validation
+node scripts/http-raw-config-e2e.mjs  # raw config save: hot reload / invalid TOML / workdir confinement
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 

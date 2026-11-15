@@ -182,9 +182,7 @@ impl Config {
         let text = std::fs::read_to_string(path).map_err(|e| {
             Error::Config(format!("cannot read {}: {e}", path.display()))
         })?;
-        let config: Config = toml::from_str(&text)?;
-        config.validate()?;
-        Ok(config)
+        parse_config(&text)
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -198,6 +196,14 @@ impl Config {
             if profile.start.command.trim().is_empty() {
                 return Err(Error::Config(format!(
                     "profiles.{name}.start.command must not be empty"
+                )));
+            }
+            let w = std::path::Path::new(&profile.workdir);
+            if w.is_absolute()
+                || w.components().any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(Error::Config(format!(
+                    "profiles.{name}.workdir must be a relative path inside the project root"
                 )));
             }
             if let Some(p) = &profile.start.ready_pattern {
@@ -215,6 +221,13 @@ impl Config {
             .get(name)
             .ok_or_else(|| Error::NotFound(format!("profile '{name}'")))
     }
+}
+
+/// Parse and validate raw lifecycle.toml text (raw-editor save path).
+pub fn parse_config(text: &str) -> Result<Config> {
+    let config: Config = toml::from_str(text)?;
+    config.validate()?;
+    Ok(config)
 }
 
 /// Partial update of one profile inside lifecycle.toml, preserving everything

@@ -250,7 +250,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | 详情 | 状态卡 + 启动/快速启动/停止/重启 + 快速/部分/完整编译（编译中可取消）；页签仅含服务级内容：日志 / 错误 / 配置 |
 | 日志 | 启动日志 / 编译日志切换；级别 + 正则过滤；搜索 + Enter/Shift+Enter 跳转；自动滚动；清屏（仅清显示）；清空日志（截断磁盘文件，范围确认弹窗）；打开日志文件 |
 | 错误 | 结构化诊断列表，点击跳编辑器行列；原始输出兜底展示 |
-| 配置 | 展示 lifecycle.toml 全文，一键在编辑器打开 / 复制 |
+| 配置 | 结构化命令表单 + lifecycle.toml 原文直接编辑（先校验后写盘、热加载、Ctrl/⌘+S）；一键在编辑器打开 / 复制 |
 | 全局设置 | 主题、系统通知开关、编辑器跳转命令（含 VS Code/Cursor/IntelliJ/Vim 预设）、日志缓冲与超时；脏标记保存栏 |
 | MCP → 调用记录 | 全局最近 200 次工具调用（UI 与 MCP 共用）：成功率/平均/MCP 数统计、按来源与结果筛选、耗时条形、实时刷新；点击行打开详情弹窗，含完整请求/响应 JSON（可复制） |
 
@@ -423,6 +423,7 @@ node scripts/mcp-e2e.mjs        # MCP stdio 全工具端到端
 node scripts/mcp-admin-e2e.mjs  # MCP 注册/配置/分组工具端到端
 node scripts/http-add-service-e2e.mjs  # 添加服务 API：创建/校验/启动/清理
 node scripts/http-clear-logs-e2e.mjs  # 清空日志 API：截断/继续写入/范围校验
+node scripts/http-raw-config-e2e.mjs  # 原文保存：热加载/非法 TOML 拒写/workdir 越界拒写
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 
