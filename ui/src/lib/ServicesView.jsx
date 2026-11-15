@@ -315,7 +315,7 @@ export default function ServicesView({
   ];
 
   return (
-    <div className="view flex h-full min-h-0 flex-col">
+    <div className="view relative flex h-full min-h-0 flex-col">
       <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-3 sm:grid-cols-3 lg:grid-cols-5">
         {tiles.map((tile) => {
           const inner = (
@@ -491,24 +491,6 @@ export default function ServicesView({
         </div>
       )}
 
-      {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--blu-soft)] px-4 py-2 text-sm">
-          <Icon name="check" size={14} className="text-[var(--blu)]" />
-          <span>{t("已选 {n} 个服务", { n: selected.size })}</span>
-          <button className="btn btn-sm btn-success" onClick={() => bulk("start")}>
-            <Icon name="play" size={12} />
-            {t("批量启动")}
-          </button>
-          <button className="btn btn-sm btn-danger" onClick={() => bulk("stop")}>
-            <Icon name="stop" size={12} />
-            {t("批量停止")}
-          </button>
-          <span className="flex-1" />
-          <button className="btn btn-sm btn-ghost" onClick={() => setSelected(new Set())}>
-            {t("清除选择")}
-          </button>
-        </div>
-      )}
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="table">
@@ -804,6 +786,34 @@ export default function ServicesView({
           }}
         />
       )}
+
+      {/* 悬浮批量操作条：overlay 不参与布局，勾选时表格行不会位移 */}
+      <div
+        role="toolbar"
+        aria-label={t("批量操作")}
+        aria-hidden={!selected.size}
+        className={`absolute bottom-9 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-[var(--blu)] bg-[var(--bg1)] px-3 py-2 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)] transition-all duration-200 ${
+          selected.size
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none invisible translate-y-3 opacity-0"
+        }`}
+      >
+        <span className="flex items-center gap-1.5 rounded-full bg-[var(--blu-soft)] px-2.5 py-0.5 text-xs font-semibold text-[var(--blu)]">
+          <Icon name="check" size={12} />
+          {t("已选 {n} 个服务", { n: selected.size })}
+        </span>
+        <button className="btn btn-sm btn-success" onClick={() => bulk("start")} disabled={!selected.size}>
+          <Icon name="play" size={12} />
+          {t("批量启动")}
+        </button>
+        <button className="btn btn-sm btn-danger" onClick={() => bulk("stop")} disabled={!selected.size}>
+          <Icon name="stop" size={12} />
+          {t("批量停止")}
+        </button>
+        <button className="btn btn-sm btn-ghost" onClick={() => setSelected(new Set())} disabled={!selected.size}>
+          {t("清除选择")}
+        </button>
+      </div>
     </div>
   );
 }

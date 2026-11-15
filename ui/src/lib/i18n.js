@@ -442,6 +442,7 @@ const EN = {
     "Saving raw replaces lifecycle.toml wholesale (keep comments yourself); validated before write, nothing is written on failure.",
   "环境: {env}": "Environment: {env}",
   打开导航: "Open navigation",
+  批量操作: "Bulk actions",
   修改环境名称: "Edit environment name",
   环境名称: "Environment name",
   保存环境名: "Save environment",
