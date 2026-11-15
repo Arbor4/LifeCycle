@@ -242,7 +242,7 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="mt-3.5 grid grid-cols-2 gap-3">
+        <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className="field-label">
               {t("服务名称")} <span className="text-[var(--red)]">*</span>
@@ -310,7 +310,7 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
           </div>
         </label>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className="field-label flex items-center gap-1">
               <Icon name="compile" size={11} className="text-[var(--blu)]" />
@@ -337,7 +337,7 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
           </label>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className="field-label">{t("工作目录（相对项目根，可选）")}</span>
             <input
@@ -371,7 +371,7 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
             {t("更多高级命令与就绪检查（快速启动 / 停止 / 重启 / 部分编译 / 正则）")}
           </button>
           {showAdvanced && (
-            <div className="mt-1.5 grid grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 p-3">
+            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 p-3">
               <label className="block">
                 <span className="field-label flex items-center gap-1">
                   <Icon name="zap" size={11} className="text-[var(--yel)]" />
@@ -640,7 +640,7 @@ function ProjectModal({ onClose, onSaved }) {
           </div>
         )}
 
-        <div className="mt-3.5 grid grid-cols-2 gap-3">
+        <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className="field-label">{t("项目/服务名称")}</span>
             <input

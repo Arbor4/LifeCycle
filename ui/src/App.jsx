@@ -15,6 +15,8 @@ import GroupsView from "./lib/GroupsView.jsx";
 import McpView from "./lib/McpView.jsx";
 import ToastHost from "./lib/ToastHost.jsx";
 import RegisterModal from "./lib/RegisterModal.jsx";
+import Logo from "./lib/Logo.jsx";
+import { useMediaQuery } from "./lib/useMediaQuery.js";
 import ProjectManageModal from "./lib/ProjectManageModal.jsx";
 import Icon from "./lib/Icon.jsx";
 
@@ -37,6 +39,9 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const [showPartial, setShowPartial] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [mobileNav, setMobileNav] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isTablet = useMediaQuery("(max-width: 1023px)");
   const [registerKind, setRegisterKind] = useState("project");
   const [manageProject, setManageProject] = useState(null);
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
@@ -48,6 +53,15 @@ export default function App() {
       return false;
     }
   });
+
+  useEffect(() => {
+    if (!isMobile) setMobileNav(false);
+  }, [isMobile]);
+
+  // 进入平板宽度默认收为图标栏，把宽度让给内容；用户仍可手动展开
+  useEffect(() => {
+    if (isTablet) setCollapsed(true);
+  }, [isTablet]);
 
   useEffect(() => {
     try {
@@ -232,26 +246,47 @@ export default function App() {
 
   return (
     <div className="flex h-full">
+      {isMobile && mobileNav && (
+        <div
+          className="fixed inset-0 z-40 bg-[var(--scrim)] backdrop-blur-[2px]"
+          onClick={() => setMobileNav(false)}
+        />
+      )}
+      <div
+        className={
+          isMobile
+            ? `fixed inset-y-0 left-0 z-50 flex transition-transform duration-200 ${
+                mobileNav ? "translate-x-0" : "-translate-x-full"
+              }`
+            : "contents"
+        }
+      >
       <Sidebar
         projects={projects}
         sel={sel}
         view={view}
         selectedProject={selectedProject}
         online={online}
-        collapsed={collapsed}
-        onToggleCollapsed={() => setCollapsed((c) => !c)}
-        onSelect={openDetail}
+        collapsed={isMobile ? false : collapsed}
+        onToggleCollapsed={isMobile ? () => setMobileNav(false) : () => setCollapsed((c) => !c)}
+        onSelect={(p, pr, src) => {
+          openDetail(p, pr, src);
+          if (isMobile) setMobileNav(false);
+        }}
         onSelectProject={(p) => {
           setSelectedProject(p);
           setView("services");
+          if (isMobile) setMobileNav(false);
         }}
         onNavigate={(v) => {
           setView(v);
           if (v !== "services") setSelectedProject(null);
+          if (isMobile) setMobileNav(false);
         }}
         onOpenAddProject={() => {
           setRegisterKind("project");
           setShowRegister(true);
+          if (isMobile) setMobileNav(false);
         }}
         onManageProject={(p) => setManageProject(p)}
         onAddServiceToProject={(p) => {
@@ -260,8 +295,27 @@ export default function App() {
           setShowRegister(true);
         }}
       />
+      </div>
 
       <main className="flex min-w-0 flex-1 flex-col">
+        {isMobile && (
+          <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-2">
+            <button
+              type="button"
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+              onClick={() => setMobileNav(true)}
+              title={t("打开导航")}
+            >
+              <Icon name="menu" size={16} />
+            </button>
+            <Logo size={22} />
+            <span className="text-sm font-semibold tracking-tight">LifeCycle</span>
+            <span
+              className={`dot ml-auto flex-none ${online ? "dot-running" : "dot-crashed"}`}
+              title={online ? t("后端服务在线（端口 39517）") : t("后端服务离线")}
+            />
+          </div>
+        )}
         {view === "services" ? (
           <ServicesView
             projects={projects}

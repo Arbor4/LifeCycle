@@ -150,6 +150,7 @@ export default function Sidebar({
                     ? { background: `color-mix(in oklab, var(--${n.tone}) 14%, transparent)`, color: `var(--${n.tone})`, fontWeight: 600 }
                     : { color: "var(--mut)" }
               }
+              title={t(n.label)}
               onClick={() => {
                 if (n.id === "services" && onSelectProject) onSelectProject(null);
                 onNavigate(n.id);

@@ -514,7 +514,7 @@ export default function ServicesView({
         <table className="table">
           <thead>
             <tr>
-              <th className="w-10">
+              <th className="w-10 hidden sm:table-cell">
                 <Checkbox
                   size="sm"
                   checked={allChecked}
@@ -524,12 +524,12 @@ export default function ServicesView({
                 />
               </th>
               {thSort("name", t("服务名称"))}
-              <th>{t("环境 / Profile")}</th>
+              <th className="hidden lg:table-cell">{t("环境 / Profile")}</th>
               {thSort("state", t("状态"))}
-              <th>PID</th>
-              {thSort("uptime", t("运行时长"))}
-              {thSort("port", t("端口"))}
-              {thSort("build", t("最近编译"))}
+              <th className="hidden lg:table-cell">PID</th>
+              {thSort("uptime", t("运行时长"), "hidden md:table-cell")}
+              {thSort("port", t("端口"), "hidden sm:table-cell")}
+              {thSort("build", t("最近编译"), "hidden xl:table-cell")}
               <th className="text-right sticky right-0 z-20 bg-[var(--bg1)] shadow-[-6px_0_12px_rgba(0,0,0,0.12)]">
                 {t("操作")}
               </th>
@@ -545,7 +545,7 @@ export default function ServicesView({
                   data-selected={selected.has(r.key) || undefined}
                   onClick={(e) => rowClick(e, r)}
                 >
-                  <td onClick={(e) => e.stopPropagation()}>
+                  <td className="hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
                     <Checkbox size="sm" checked={selected.has(r.key)} onChange={() => toggle(r.key)} title={t("选择 {key}", { key: r.key })} />
                   </td>
                   <td>
@@ -571,7 +571,7 @@ export default function ServicesView({
                       <span className="text-[11px] mono text-[var(--dim)]">({r.project})</span>
                     </div>
                   </td>
-                  <td onClick={(e) => e.stopPropagation()}>
+                  <td className="hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <select
                         className="input !py-0.5 !px-2 text-xs mono font-medium bg-[var(--bg2)] border-[var(--line)]"
@@ -613,10 +613,10 @@ export default function ServicesView({
                       </span>
                     </span>
                   </td>
-                  <td className="mono text-[var(--mut)]">{r.pid ?? "—"}</td>
-                  <td className="mono text-[var(--mut)]">{uptime(r.uptime_ms)}</td>
-                  <td className="mono text-[var(--mut)]">{r.port ?? "—"}</td>
-                  <td>
+                  <td className="mono hidden lg:table-cell text-[var(--mut)]">{r.pid ?? "—"}</td>
+                  <td className="mono hidden md:table-cell text-[var(--mut)]">{uptime(r.uptime_ms)}</td>
+                  <td className="mono hidden sm:table-cell text-[var(--mut)]">{r.port ?? "—"}</td>
+                  <td className="hidden xl:table-cell">
                     {r.last_build ? (
                       <button
                         type="button"
@@ -668,7 +668,7 @@ export default function ServicesView({
                           {t("停止")}
                         </button>
                         <button
-                          className="btn btn-sm btn-warn !py-1 !px-1.5"
+                          className="btn btn-sm btn-warn !py-1 !px-1.5 hidden sm:inline-flex"
                           title={t("重启服务")}
                           disabled={!!busy[r.key]}
                           onClick={() => restart(r)}
@@ -677,7 +677,7 @@ export default function ServicesView({
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
+                      <div className="hidden lg:flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
                         <button
                           className="btn btn-sm btn-primary !py-1 !px-2"
                           title={t("快速增量编译")}
