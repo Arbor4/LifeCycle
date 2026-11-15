@@ -331,7 +331,15 @@ export default function Sidebar({
       {/* 底部操作区 */}
       <div className={`flex border-t border-[var(--line)] p-2 ${collapsed ? "flex-col items-center gap-1" : "items-center gap-1"}`}>
         <button
-          className={collapsed ? iconBtn : `${iconBtn} !w-auto flex-1 gap-2 px-2.5 text-[13px]`}
+          className={
+            collapsed
+              ? iconBtn
+              : `flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors ${
+                  view === "settings"
+                    ? "bg-[var(--blu-soft)] font-medium text-[var(--blu)]"
+                    : "text-[var(--mut)] hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+                }`
+          }
           title={t("全局设置")}
           onClick={() => onNavigate("settings")}
         >
