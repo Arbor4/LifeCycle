@@ -251,7 +251,7 @@ The **Groups** page batches any number of `project/profile` pairs (e.g. "backend
 | Sidebar | Three entries: Services / Groups / MCP. Footer: a Settings button, a single theme-cycle button (light → dark → system) and a collapse control that shrinks the sidebar to an icon rail. Language lives in Settings |
 | Services | Stat tiles (running / starting-stopping / crashed / idle / build failed — click to filter); sticky header, sortable columns, select-all with indeterminate state, bulk start/stop; row click opens detail |
 | Detail | Status card + start / fast-start / stop / restart + quick / partial / full compile (cancellable while running); tabs are service-scoped only: Logs / Errors / Config |
-| Logs | Run-log / build-log toggle; level + regex filters; search with Enter / Shift+Enter jump; auto-scroll; clear; open log file; color toggle |
+| Logs | Run-log / build-log toggle; level + regex filters; search with Enter / Shift+Enter jump; auto-scroll; clear screen (display only); clear logs (truncates on-disk files, scope-confirm modal); open log file; color toggle |
 | Errors | Structured diagnostics, click to jump to editor line/col; raw output as fallback |
 | Config | Full lifecycle.toml with open-in-editor / copy |
 | Global settings | Language, theme, notification switch, editor jump command (VS Code/Cursor/IntelliJ/Vim presets), log buffer & timeouts; dirty-state save bar |
@@ -427,6 +427,7 @@ bash scripts/fixtures-e2e.sh    # java/node/rust/simple fixtures end-to-end
 node scripts/mcp-e2e.mjs        # MCP stdio all-tools end-to-end
 node scripts/mcp-admin-e2e.mjs  # MCP register/configure/group tools end-to-end
 node scripts/http-add-service-e2e.mjs  # add-service API: create/validate/start/cleanup
+node scripts/http-clear-logs-e2e.mjs  # clear-logs API: truncate/keep-appending/scope validation
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 

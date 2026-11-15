@@ -8,6 +8,7 @@ import { copyText } from "./clipboard.js";
 import { LogContent } from "./logHighlight.jsx";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
+import Modal from "./Modal.jsx";
 
 const ROW = 20;
 const CAP = 100000;
@@ -35,6 +36,9 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
   });
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(400);
+  const [showClear, setShowClear] = useState(false);
+  const [clearScope, setClearScope] = useState("current");
+  const [clearing, setClearing] = useState(false);
   const container = useRef(null);
   const autoRef = useRef(autoScroll);
   autoRef.current = autoScroll;
@@ -154,6 +158,33 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
     [matches, matchPos, viewH]
   );
 
+  async function confirmClear() {
+    if (clearing) return;
+    setClearing(true);
+    try {
+      const scope = clearScope === "current" ? source : "all";
+      const r = await api(profilePath(project, profile, "/logs/clear"), {
+        method: "POST",
+        body: JSON.stringify({ source: scope }),
+      });
+      const bytes = (r.cleared ?? []).reduce((n, c) => n + (c.bytes ?? 0), 0);
+      setLines([]);
+      setMatchPos(-1);
+      setShowClear(false);
+      pushToast(
+        t("日志已清空（{scope}，释放 {kb} KB）", {
+          scope: scope === "all" ? t("全部来源") : source === "run" ? t("启动日志") : t("编译日志"),
+          kb: (bytes / 1024).toFixed(1),
+        }),
+        { kind: "success" }
+      );
+    } catch (e) {
+      pushToast(e.message, { kind: "error" });
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const sourceBtn = (active) =>
     `flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all ${
       active ? "bg-[var(--bg1)] text-[var(--txt)] shadow-sm font-semibold" : "text-[var(--mut)] hover:text-[var(--txt)]"
@@ -249,9 +280,24 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           <Icon name="copy" size={12} />
           {t("复制")}
         </button>
-        <button className="btn btn-sm" onClick={() => setLines([])} title={t("清空当前显示屏")}>
+        <button
+          className="btn btn-sm"
+          onClick={() => setLines([])}
+          title={t("仅清空当前显示，不删除日志数据")}
+        >
           <Icon name="x" size={12} />
           {t("清屏")}
+        </button>
+        <button
+          className="btn btn-sm btn-danger"
+          onClick={() => {
+            setClearScope("current");
+            setShowClear(true);
+          }}
+          title={t("删除磁盘日志文件与缓冲，不可恢复")}
+        >
+          <Icon name="trash" size={12} />
+          {t("清空日志")}
         </button>
         <button
           className="btn btn-sm"
@@ -288,6 +334,59 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           </div>
         )}
       </div>
+
+      {showClear && (
+        <Modal
+          title={t("清空日志")}
+          icon="trash"
+          tone="red"
+          width={460}
+          onClose={() => setShowClear(false)}
+          subtitle={t("不同于「清屏」：这会真正删除日志数据。")}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setShowClear(false)}>
+                {t("取消")}
+              </button>
+              <button type="button" className="btn btn-danger" disabled={clearing} onClick={confirmClear}>
+                {clearing ? <span className="spinner" /> : <Icon name="trash" size={12} />}
+                {t("清空日志")}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            {[
+              { id: "current", label: t("仅当前来源（{name}）", { name: source === "run" ? t("启动日志") : t("编译日志") }) },
+              { id: "all", label: t("全部来源（启动 + 编译）") },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                  clearScope === opt.id
+                    ? "border-[var(--red)] bg-[var(--red-soft)] font-medium text-[var(--txt)]"
+                    : "border-[var(--line)] text-[var(--mut)] hover:bg-[var(--bg2)]"
+                }`}
+                onClick={() => setClearScope(opt.id)}
+              >
+                <span
+                  className={`flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border ${
+                    clearScope === opt.id ? "border-[var(--red)]" : "border-[var(--line2)]"
+                  }`}
+                >
+                  {clearScope === opt.id && <span className="h-1.5 w-1.5 rounded-full bg-[var(--red)]" />}
+                </span>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-[var(--dim)]">
+            <Icon name="warn" size={12} className="mt-0.5 flex-none text-[var(--red)]" />
+            <span>{t("将清空所选来源的磁盘日志文件，历史输出不可恢复；运行中的服务会继续写入新日志。")}</span>
+          </p>
+        </Modal>
+      )}
     </div>
   );
 }

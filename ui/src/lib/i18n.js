@@ -423,6 +423,16 @@ const EN = {
   继续编辑: "Keep editing",
   "可选字段清空后保存即从 lifecycle.toml 删除对应配置；「从配置文件同步」可放弃编辑并载入磁盘最新值。":
     "Saving a cleared optional field removes it from lifecycle.toml; “Sync from config” discards edits and loads the latest on-disk values.",
+  清空日志: "Clear logs",
+  "仅清空当前显示，不删除日志数据": "Clears the display only; log data is kept",
+  "删除磁盘日志文件与缓冲，不可恢复": "Delete on-disk log files and buffers; unrecoverable",
+  "不同于「清屏」：这会真正删除日志数据。": "Unlike “clear screen”, this actually deletes log data.",
+  "仅当前来源（{name}）": "Current source only ({name})",
+  "全部来源（启动 + 编译）": "All sources (run + build)",
+  "将清空所选来源的磁盘日志文件，历史输出不可恢复；运行中的服务会继续写入新日志。":
+    "Truncates the on-disk log files for the selected scope. History cannot be recovered; running services keep appending new output.",
+  "日志已清空（{scope}，释放 {kb} KB）": "Logs cleared ({scope}, freed {kb} KB)",
+  全部来源: "all sources",
   添加第一个项目: "Add your first project",
   添加第一个服务: "Add your first service",
   "添加 / 导入服务": "Add / import service",

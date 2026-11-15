@@ -127,6 +127,21 @@ impl LogHub {
         })
     }
 
+    /// Truncate the on-disk log file, returning its previous size. Child writers
+    /// hold append-mode handles so later output lands at the new end; readers
+    /// detect the truncation via `read_since` and restart from zero.
+    pub fn clear(&self, profile: &str, source: &str) -> Result<u64> {
+        let path = self.path(profile, source);
+        let file = match std::fs::OpenOptions::new().write(true).open(&path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
+        };
+        let len = file.metadata()?.len();
+        file.set_len(0)?;
+        Ok(len)
+    }
+
     /// Lines appended after `cursor`. A trailing partial line is left for the next read.
     pub fn read_since(
         &self,
@@ -261,5 +276,25 @@ mod tests {
         let hub = LogHub::new(dir.path());
         assert!(hub.tail("default", "run", 10, None).unwrap().lines.is_empty());
         assert!(hub.read_since("default", "run", 0, None).unwrap().lines.is_empty());
+    }
+
+    #[test]
+    fn clear_truncates_and_readers_restart() {
+        use std::io::Write;
+        let (dir, hub) = hub_with("a\nb\nc\n");
+        let old = hub.read_since("default", "run", 0, None).unwrap().next_cursor;
+        assert_eq!(hub.clear("default", "run").unwrap(), 6);
+        assert_eq!(std::fs::metadata(dir.path().join("default-run.log")).unwrap().len(), 0);
+        assert!(hub.tail("default", "run", 10, None).unwrap().lines.is_empty());
+        let reset = hub.read_since("default", "run", old, None).unwrap();
+        assert!(reset.lines.is_empty());
+        assert_eq!(reset.next_cursor, 0);
+        // append-mode writer (as spawned children hold) continues at new end
+        let mut f = ensure_log_file(&hub.path("default", "run")).unwrap();
+        f.write_all(b"new\n").unwrap();
+        let page = hub.read_since("default", "run", 0, None).unwrap();
+        assert_eq!(page.lines.len(), 1);
+        assert_eq!(page.lines[0].text, "new");
+        assert_eq!(hub.clear("default", "missing").unwrap(), 0);
     }
 }

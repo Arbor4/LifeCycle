@@ -449,6 +449,21 @@ impl Engine {
         self.start(profile, wait).await
     }
 
+    pub fn clear_logs(&self, profile: &str, source: &str) -> Result<Vec<(String, u64)>> {
+        self.config.profile(profile)?;
+        let sources: &[&str] = match source {
+            "run" => &["run"],
+            "build" => &["build"],
+            "all" => &["run", "build"],
+            _ => return Err(Error::Config(format!("unknown log source '{source}'"))),
+        };
+        let mut out = Vec::new();
+        for s in sources {
+            out.push(((*s).to_string(), self.hub.clear(profile, s)?));
+        }
+        Ok(out)
+    }
+
     pub fn logs(
         &self,
         profile: &str,

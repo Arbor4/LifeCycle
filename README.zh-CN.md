@@ -248,7 +248,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | 侧栏 | 三个入口：服务 / 分组 / MCP；底部一个设置按钮、一个主题循环按钮（亮 → 暗 → 跟随系统）与收缩控件（收为图标栏）；语言切换放在设置中 |
 | 服务列表 | 顶部统计卡（运行中 / 启停中 / 崩溃 / 未启动 / 编译失败，点击即筛选）；表格吸顶表头、列排序、全选/半选、批量启停；行点击进详情 |
 | 详情 | 状态卡 + 启动/快速启动/停止/重启 + 快速/部分/完整编译（编译中可取消）；页签仅含服务级内容：日志 / 错误 / 配置 |
-| 日志 | 启动日志 / 编译日志切换；级别 + 正则过滤；搜索 + Enter/Shift+Enter 跳转；自动滚动；清屏；打开日志文件 |
+| 日志 | 启动日志 / 编译日志切换；级别 + 正则过滤；搜索 + Enter/Shift+Enter 跳转；自动滚动；清屏（仅清显示）；清空日志（截断磁盘文件，范围确认弹窗）；打开日志文件 |
 | 错误 | 结构化诊断列表，点击跳编辑器行列；原始输出兜底展示 |
 | 配置 | 展示 lifecycle.toml 全文，一键在编辑器打开 / 复制 |
 | 全局设置 | 主题、系统通知开关、编辑器跳转命令（含 VS Code/Cursor/IntelliJ/Vim 预设）、日志缓冲与超时；脏标记保存栏 |
@@ -422,6 +422,7 @@ bash scripts/fixtures-e2e.sh    # java/node/rust/simple 四个 fixture 端到端
 node scripts/mcp-e2e.mjs        # MCP stdio 全工具端到端
 node scripts/mcp-admin-e2e.mjs  # MCP 注册/配置/分组工具端到端
 node scripts/http-add-service-e2e.mjs  # 添加服务 API：创建/校验/启动/清理
+node scripts/http-clear-logs-e2e.mjs  # 清空日志 API：截断/继续写入/范围校验
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 

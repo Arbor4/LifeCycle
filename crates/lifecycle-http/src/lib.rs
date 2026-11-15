@@ -223,6 +223,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/projects/{project}/profiles/{profile}/logs/stream",
             get(logs_stream),
         )
+        .route(
+            "/api/projects/{project}/profiles/{profile}/logs/clear",
+            post(clear_logs),
+        )
         .nest_service("/mcp", mcp_service)
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -946,6 +950,42 @@ fn default_source() -> String {
 
 fn default_lines() -> usize {
     500
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ClearLogsBody {
+    #[serde(default = "default_log_scope")]
+    source: String,
+}
+
+fn default_log_scope() -> String {
+    "all".into()
+}
+
+async fn clear_logs(
+    State(state): State<Arc<AppState>>,
+    Path((project, profile)): Path<(String, String)>,
+    body: Option<Json<ClearLogsBody>>,
+) -> ApiResult {
+    let source = body.map(|b| b.0.source).unwrap_or_else(default_log_scope);
+    traced(
+        &state,
+        "clear_logs",
+        json!({"project": project, "profile": profile, "source": source}),
+        async {
+            let engine = state.ws.engine(&project)?;
+            let guard = engine.lock().await;
+            let cleared = guard.clear_logs(&profile, &source)?;
+            Ok(json!({
+                "ok": true,
+                "cleared": cleared
+                    .iter()
+                    .map(|(s, b)| json!({"source": s, "bytes": b}))
+                    .collect::<Vec<_>>()
+            }))
+        },
+    )
+    .await
 }
 
 async fn get_logs(
