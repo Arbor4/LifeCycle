@@ -253,7 +253,10 @@ export default function ProjectManageModal({
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`dot dot-${s.state}`} />
-                    <span className="mono font-semibold text-[var(--blu)]">{s.profile}</span>
+                    <span className="font-semibold text-[var(--txt)]">{s.service || s.profile}</span>
+                    <span className="mono rounded bg-[var(--bg2)] border border-[var(--line)] px-1.5 py-0.5 text-[10px] text-[var(--mut)]">
+                      {s.env_name || s.profile}
+                    </span>
                     <span className="text-[11px] text-[var(--dim)]">
                       {t(STATE_LABEL[s.state] ?? s.state)}
                     </span>

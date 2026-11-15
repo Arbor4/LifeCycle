@@ -21,11 +21,20 @@ use crate::process::{
 #[derive(Debug, Clone, Serialize)]
 pub struct ProfileStatus {
     pub profile: String,
+    pub service: String,
+    pub env_name: String,
     pub state: State,
     pub pid: Option<u32>,
     pub uptime_ms: Option<u64>,
     pub command: Option<String>,
+    pub fast_start_command: Option<String>,
+    pub stop_command: Option<String>,
+    pub restart_command: Option<String>,
+    pub workdir: Option<String>,
     pub port: Option<u16>,
+    pub compile_quick: Option<String>,
+    pub compile_partial: Option<String>,
+    pub compile_full: Option<String>,
     pub last_build: Option<BuildSummary>,
 }
 
@@ -112,7 +121,7 @@ impl Engine {
             .profiles
             .iter()
             .map(|(name, cfg)| {
-                status_from(name, records.get(name), builds.get(name), cfg.start.ready_port)
+                status_from(name, cfg, records.get(name), builds.get(name))
             })
             .collect())
     }
@@ -124,9 +133,9 @@ impl Engine {
         let builds = compile::load_builds(&self.builds_path)?;
         Ok(status_from(
             profile,
+            cfg,
             records.get(profile),
             builds.get(profile),
-            cfg.start.ready_port,
         ))
     }
 
@@ -303,8 +312,17 @@ impl Engine {
             }
         }
 
+        let mut spawn_cfg = profile_cfg.clone();
+        if !wait {
+            if let Some(fast_cmd) = &profile_cfg.start.fast_command {
+                if !fast_cmd.trim().is_empty() {
+                    spawn_cfg.start.command = fast_cmd.clone();
+                }
+            }
+        }
+
         let (mut record, mut child) =
-            process::spawn(profile, &profile_cfg, &self.paths, self.config.logs.color)?;
+            process::spawn(profile, &spawn_cfg, &self.paths, self.config.logs.color)?;
         let pid = record.pid;
         records.insert(profile.into(), record.clone());
         self.store.save(&records)?;
@@ -378,7 +396,7 @@ impl Engine {
         profile: &str,
         timeout_ms: Option<u64>,
     ) -> Result<StopOutcome> {
-        self.config.profile(profile)?;
+        let profile_cfg = self.config.profile(profile)?.clone();
         let mut records = self.store.load()?;
         let Some(mut record) = records.remove(profile) else {
             return Ok(StopOutcome {
@@ -390,6 +408,16 @@ impl Engine {
         let mut with_stopping = records.clone();
         with_stopping.insert(profile.into(), record.clone());
         self.store.save(&with_stopping)?;
+
+        if let Some(stop_cfg) = &profile_cfg.stop {
+            if let Some(stop_cmd) = &stop_cfg.command {
+                if !stop_cmd.trim().is_empty() {
+                    let mut cmd = process::shell_command(stop_cmd);
+                    cmd.current_dir(self.paths.workdir(&profile_cfg));
+                    let _ = cmd.status().await;
+                }
+            }
+        }
 
         let timeout_ms = timeout_ms.unwrap_or(self.config.process.stop_timeout_ms);
         let exit_code = match self.children.remove(profile) {
@@ -407,7 +435,17 @@ impl Engine {
     }
 
     pub async fn restart(&mut self, profile: &str, wait: bool) -> Result<StartOutcome> {
+        let profile_cfg = self.config.profile(profile)?.clone();
         self.stop(profile).await?;
+        if let Some(restart_cfg) = &profile_cfg.restart {
+            if let Some(restart_cmd) = &restart_cfg.command {
+                if !restart_cmd.trim().is_empty() {
+                    let mut cmd = process::shell_command(restart_cmd);
+                    cmd.current_dir(self.paths.workdir(&profile_cfg));
+                    let _ = cmd.status().await;
+                }
+            }
+        }
         self.start(profile, wait).await
     }
 
@@ -466,21 +504,63 @@ impl Engine {
     }
 }
 
+pub fn parse_service_and_env(
+    key: &str,
+    cfg_service: Option<&str>,
+    cfg_env: Option<&str>,
+) -> (String, String) {
+    if let (Some(s), Some(e)) = (cfg_service, cfg_env) {
+        return (s.to_string(), e.to_string());
+    }
+    if let Some(s) = cfg_service {
+        return (s.to_string(), cfg_env.unwrap_or("dev").to_string());
+    }
+    if let Some((s, e)) = key.split_once(':').or_else(|| key.split_once('/')) {
+        return (s.to_string(), e.to_string());
+    }
+    if matches!(key, "dev" | "test" | "prod" | "staging" | "default") {
+        let env = if key == "default" { "dev" } else { key };
+        return ("main".to_string(), env.to_string());
+    }
+    (key.to_string(), cfg_env.unwrap_or("dev").to_string())
+}
+
 fn status_from(
     name: &str,
+    cfg: &crate::config::Profile,
     record: Option<&RunRecord>,
     build: Option<&BuildSummary>,
-    port: Option<u16>,
 ) -> ProfileStatus {
+    let (service, env_name) =
+        parse_service_and_env(name, cfg.service.as_deref(), cfg.env_name.as_deref());
     let last_build = build.cloned();
+    let compile_quick = cfg.compile.quick.as_ref().map(|c| c.command.clone());
+    let compile_partial = cfg.compile.partial.as_ref().map(|c| c.command.clone());
+    let compile_full = cfg.compile.full.as_ref().map(|c| c.command.clone());
+    let fast_start_command = cfg.start.fast_command.clone();
+    let stop_command = cfg.stop.as_ref().and_then(|s| s.command.clone());
+    let restart_command = cfg.restart.as_ref().and_then(|r| r.command.clone());
+    let workdir = Some(cfg.workdir.clone());
+    let port = cfg.start.ready_port;
+    let base_command = Some(cfg.start.command.clone());
+
     match record {
         None => ProfileStatus {
             profile: name.into(),
+            service,
+            env_name,
             state: State::Idle,
             pid: None,
             uptime_ms: None,
-            command: None,
+            command: base_command,
+            fast_start_command,
+            stop_command,
+            restart_command,
+            workdir,
             port,
+            compile_quick,
+            compile_partial,
+            compile_full,
             last_build,
         },
         Some(r) => {
@@ -488,11 +568,20 @@ fn status_from(
             let state = if alive { r.state } else { State::Crashed };
             ProfileStatus {
                 profile: name.into(),
+                service,
+                env_name,
                 state,
                 pid: Some(r.pid),
                 uptime_ms: alive.then(|| now_ms().saturating_sub(r.started_at_ms)),
                 command: Some(r.command.clone()),
+                fast_start_command,
+                stop_command,
+                restart_command,
+                workdir,
                 port,
+                compile_quick,
+                compile_partial,
+                compile_full,
                 last_build,
             }
         }

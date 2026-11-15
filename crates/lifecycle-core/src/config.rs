@@ -27,11 +27,19 @@ pub struct Project {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
+    #[serde(default)]
+    pub service: Option<String>,
+    #[serde(default)]
+    pub env_name: Option<String>,
     #[serde(default = "default_workdir")]
     pub workdir: String,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
     pub start: StartConfig,
+    #[serde(default)]
+    pub stop: Option<StopConfig>,
+    #[serde(default)]
+    pub restart: Option<RestartConfig>,
     #[serde(default)]
     pub compile: CompileConfig,
 }
@@ -44,10 +52,28 @@ fn default_workdir() -> String {
 #[serde(deny_unknown_fields)]
 pub struct StartConfig {
     pub command: String,
+    #[serde(default)]
+    pub fast_command: Option<String>,
     pub ready_pattern: Option<String>,
     pub ready_port: Option<u16>,
     #[serde(default = "default_ready_timeout")]
     pub ready_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StopConfig {
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestartConfig {
+    #[serde(default)]
+    pub command: Option<String>,
 }
 
 fn default_ready_timeout() -> u64 {
@@ -195,9 +221,14 @@ impl Config {
 /// else (other profiles, comments, formatting). Creates the profile if absent.
 #[derive(Debug, Default, Clone)]
 pub struct ProfilePatch {
+    pub service: Option<String>,
+    pub env_name: Option<String>,
     pub workdir: Option<String>,
     pub env: Option<BTreeMap<String, String>>,
     pub start_command: Option<String>,
+    pub fast_start_command: Option<String>,
+    pub stop_command: Option<String>,
+    pub restart_command: Option<String>,
     pub ready_pattern: Option<String>,
     pub ready_port: Option<u16>,
     pub ready_timeout_ms: Option<u64>,
@@ -233,6 +264,12 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
     let existed = doc.get("profiles").and_then(|p| p.get(profile)).is_some();
 
     let base = ["profiles", profile];
+    if let Some(s) = &patch.service {
+        ensure_table(&mut doc, &base)["service"] = toml_edit::value(s.as_str());
+    }
+    if let Some(e) = &patch.env_name {
+        ensure_table(&mut doc, &base)["env_name"] = toml_edit::value(e.as_str());
+    }
     if let Some(w) = &patch.workdir {
         ensure_table(&mut doc, &base)["workdir"] = toml_edit::value(w.as_str());
     }
@@ -245,6 +282,18 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
     }
     if let Some(cmd) = &patch.start_command {
         ensure_table(&mut doc, &["profiles", profile, "start"])["command"] =
+            toml_edit::value(cmd.as_str());
+    }
+    if let Some(cmd) = &patch.fast_start_command {
+        ensure_table(&mut doc, &["profiles", profile, "start"])["fast_command"] =
+            toml_edit::value(cmd.as_str());
+    }
+    if let Some(cmd) = &patch.stop_command {
+        ensure_table(&mut doc, &["profiles", profile, "stop"])["command"] =
+            toml_edit::value(cmd.as_str());
+    }
+    if let Some(cmd) = &patch.restart_command {
+        ensure_table(&mut doc, &["profiles", profile, "restart"])["command"] =
             toml_edit::value(cmd.as_str());
     }
     if let Some(p) = &patch.ready_pattern {
@@ -325,6 +374,108 @@ pub fn rename_project(path: &Path, new_name: &str) -> Result<()> {
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
     ensure_table(&mut doc, &["project"])["name"] = toml_edit::value(new_name);
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Rename a profile key in `[profiles]` in lifecycle.toml.
+pub fn rename_profile(path: &Path, old_key: &str, new_key: &str) -> Result<()> {
+    if new_key.trim().is_empty() {
+        return Err(Error::Config("profile name must not be empty".into()));
+    }
+    if old_key == new_key {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+    let profiles = doc
+        .get_mut("profiles")
+        .and_then(|p| p.as_table_mut())
+        .ok_or_else(|| Error::NotFound(format!("no profiles table in {}", path.display())))?;
+    if profiles.contains_key(new_key) {
+        return Err(Error::Config(format!("profile '{new_key}' already exists")));
+    }
+    if let Some(item) = profiles.remove(old_key) {
+        profiles.insert(new_key, item);
+    } else {
+        return Err(Error::NotFound(format!("profile '{old_key}' not found")));
+    }
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Rename a service across all profiles of that service in lifecycle.toml.
+pub fn rename_service(path: &Path, old_service: &str, new_service: &str) -> Result<()> {
+    if new_service.trim().is_empty() {
+        return Err(Error::Config("service name must not be empty".into()));
+    }
+    if old_service == new_service {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+    let profiles = doc
+        .get_mut("profiles")
+        .and_then(|p| p.as_table_mut())
+        .ok_or_else(|| Error::NotFound(format!("no profiles table in {}", path.display())))?;
+
+    let keys: Vec<String> = profiles.iter().map(|(k, _)| k.to_string()).collect();
+    let mut renames = Vec::new();
+
+    for key in keys {
+        let is_service_match = if let Some(table) = profiles.get(&key).and_then(|i| i.as_table()) {
+            if let Some(svc) = table.get("service").and_then(|v| v.as_str()) {
+                svc == old_service
+            } else {
+                key == old_service || key.starts_with(&format!("{old_service}:")) || key.starts_with(&format!("{old_service}/"))
+            }
+        } else {
+            key == old_service || key.starts_with(&format!("{old_service}:")) || key.starts_with(&format!("{old_service}/"))
+        };
+
+        if is_service_match {
+            let new_key = if key == old_service {
+                new_service.to_string()
+            } else if let Some(rest) = key.strip_prefix(&format!("{old_service}:")) {
+                format!("{new_service}:{rest}")
+            } else if let Some(rest) = key.strip_prefix(&format!("{old_service}/")) {
+                format!("{new_service}/{rest}")
+            } else {
+                key.clone()
+            };
+            renames.push((key, new_key));
+        }
+    }
+
+    if renames.is_empty() {
+        return Err(Error::NotFound(format!("service '{old_service}' not found")));
+    }
+
+    for (old_k, new_k) in renames {
+        if let Some(mut item) = profiles.remove(&old_k) {
+            if let Some(tbl) = item.as_table_mut() {
+                if tbl.contains_key("service") {
+                    tbl["service"] = toml_edit::value(new_service);
+                }
+            }
+            profiles.insert(&new_k, item);
+        }
+    }
+
     let updated: Config = toml::from_str(&doc.to_string())?;
     updated.validate()?;
     let tmp = path.with_extension("toml.tmp");

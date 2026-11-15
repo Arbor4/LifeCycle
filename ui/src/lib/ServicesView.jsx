@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api, profilePath } from "./api.js";
 import { pushToast } from "./toast.js";
 import { copyText } from "./clipboard.js";
@@ -6,6 +6,7 @@ import { STATE_LABEL, uptime } from "./format.js";
 import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
+import Modal from "./Modal.jsx";
 import RegisterModal from "./RegisterModal.jsx";
 
 const VIEW_KEY = "lifecycle-services-view";
@@ -190,6 +191,35 @@ export default function ServicesView({
         { kind: res.success ? "success" : "error" }
       );
     });
+  const compileFull = (r) =>
+    act(r.key, async () => {
+      const res = await post(r, "/compile", { kind: "full" });
+      pushToast(
+        res.success
+          ? t("{key} 全量编译成功 · {ms}ms", { key: r.key, ms: res.duration_ms })
+          : t("{key} 全量编译失败 · {n} 错误", { key: r.key, n: res.errors.length }),
+        { kind: res.success ? "success" : "error" }
+      );
+    });
+
+  const [renamingService, setRenamingService] = useState(null);
+
+  async function handleRenameService() {
+    if (!renamingService) return;
+    const { project, service, newName } = renamingService;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === service) return;
+    try {
+      await api(`/api/projects/${encodeURIComponent(project)}/services/${encodeURIComponent(service)}/rename`, {
+        method: "POST",
+        body: JSON.stringify({ name: trimmed }),
+      });
+      pushToast(t("服务已重命名为「{name}」", { name: trimmed }), { kind: "success" });
+      setRenamingService(null);
+    } catch (err) {
+      pushToast(err.message, { kind: "error" });
+    }
+  }
 
   async function unregister(r) {
     if (confirming !== r.key) {
@@ -494,12 +524,15 @@ export default function ServicesView({
                 />
               </th>
               {thSort("name", t("服务名称"))}
+              <th>{t("环境 / Profile")}</th>
               {thSort("state", t("状态"))}
               <th>PID</th>
               {thSort("uptime", t("运行时长"))}
               {thSort("port", t("端口"))}
               {thSort("build", t("最近编译"))}
-              <th className="text-right">{t("操作")}</th>
+              <th className="text-right sticky right-0 z-20 bg-[var(--bg1)] shadow-[-6px_0_12px_rgba(0,0,0,0.12)]">
+                {t("操作")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -508,7 +541,7 @@ export default function ServicesView({
               return (
                 <tr
                   key={r.key}
-                  className="cursor-pointer"
+                  className="group cursor-pointer hover:bg-[var(--bg2)]/60 transition-colors"
                   data-selected={selected.has(r.key) || undefined}
                   onClick={(e) => rowClick(e, r)}
                 >
@@ -516,11 +549,57 @@ export default function ServicesView({
                     <Checkbox size="sm" checked={selected.has(r.key)} onChange={() => toggle(r.key)} title={t("选择 {key}", { key: r.key })} />
                   </td>
                   <td>
-                    <span className="mono text-[var(--blu)]">
-                      {r.project}
-                      <span className="text-[var(--dim)]">/</span>
-                      {r.profile}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-sm text-[var(--txt)]">
+                        {r.service || r.profile}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[var(--dim)] hover:text-[var(--blu)] p-0.5 rounded transition-colors"
+                        title={t("修改服务名称")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingService({
+                            project: r.project,
+                            service: r.service || r.profile,
+                            newName: r.service || r.profile,
+                          });
+                        }}
+                      >
+                        <Icon name="edit" size={11} />
+                      </button>
+                      <span className="text-[11px] mono text-[var(--dim)]">({r.project})</span>
+                    </div>
+                  </td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <select
+                        className="input !py-0.5 !px-2 text-xs mono font-medium bg-[var(--bg2)] border-[var(--line)]"
+                        value={r.profile}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__ADD__") {
+                            openAddModal();
+                          } else {
+                            onOpen(r.project, val, "run");
+                          }
+                        }}
+                        title={t("切换或添加该服务的运行环境")}
+                      >
+                        <option value={r.profile}>
+                          {r.env_name || r.profile} ({r.env_name === "prod" ? t("生产") : r.env_name === "test" ? t("测试") : t("开发")})
+                        </option>
+                        {targetProjects
+                          .find((p) => p.project === r.project)
+                          ?.profiles?.filter((s) => s.profile !== r.profile && (s.service === r.service || (!s.service && !r.service)))
+                          .map((s) => (
+                            <option key={s.profile} value={s.profile}>
+                              {s.env_name || s.profile}
+                            </option>
+                          ))}
+                        <option value="__ADD__">{t("+ 新增环境…")}</option>
+                      </select>
+                    </div>
                   </td>
                   <td>
                     <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -562,8 +641,11 @@ export default function ServicesView({
                       <span className="text-[var(--dim)]">—</span>
                     )}
                   </td>
-                  <td>
-                    <div className="flex justify-end items-center gap-1.5">
+                  <td
+                    className="sticky right-0 z-10 bg-[var(--bg1)] group-hover:bg-[var(--bg2)] transition-colors shadow-[-6px_0_12px_rgba(0,0,0,0.12)]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-end items-center gap-1.5 py-0.5 pr-1">
                       {busy[r.key] && <span className="spinner self-center text-[var(--blu)]" />}
 
                       <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
@@ -603,13 +685,21 @@ export default function ServicesView({
                           onClick={() => compile(r)}
                         >
                           <Icon name="compile" size={11} />
-                          {t("编译")}
+                          {t("快速")}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-ghost !py-1 !px-1.5"
+                          title={t("全量完整编译")}
+                          disabled={!!busy[r.key]}
+                          onClick={() => compileFull(r)}
+                        >
+                          <Icon name="boxes" size={11} />
                         </button>
                       </div>
 
                       <button
                         className="btn btn-sm btn-ghost !py-1 !px-1.5"
-                        title={t("查看服务启动日志")}
+                        title={t("查看服务启动日志与配置")}
                         onClick={() => onOpen(r.project, r.profile, "run")}
                       >
                         <Icon name="logs" size={12} />
@@ -662,6 +752,45 @@ export default function ServicesView({
         <span className="flex-1" />
         <span>{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
       </div>
+
+      {renamingService && (
+        <Modal
+          title={t("修改服务名称")}
+          icon="edit"
+          tone="blu"
+          width={440}
+          onClose={() => setRenamingService(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setRenamingService(null)}>
+                {t("取消")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!renamingService.newName.trim() || renamingService.newName.trim() === renamingService.service}
+                onClick={handleRenameService}
+              >
+                {t("保存服务名")}
+              </button>
+            </>
+          }
+        >
+          <label className="block">
+            <span className="field-label">{t("服务名称")}</span>
+            <input
+              className="input mono w-full"
+              value={renamingService.newName}
+              onChange={(e) => setRenamingService({ ...renamingService, newName: e.target.value })}
+              placeholder={t("输入新的服务名")}
+              autoFocus
+            />
+          </label>
+          <p className="mt-2 text-xs text-[var(--dim)] leading-5">
+            {t("重命名将同步更新 lifecycle.toml 中该服务名下的全部环境配置。")}
+          </p>
+        </Modal>
+      )}
 
       {showRegister && (
         <RegisterModal

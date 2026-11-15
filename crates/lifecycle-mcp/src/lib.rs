@@ -86,7 +86,7 @@ pub fn tool_catalog() -> Vec<ToolInfo> {
         t("cancel_compile", "取消进行中的编译", "编译", "build"),
         t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
         t("register_project", "注册/导入项目：探测工程并生成 lifecycle.toml", "配置", "danger"),
-        t("configure_service", "配置服务（不存在则创建）：启动命令/就绪端口/正则/三档编译", "配置", "danger"),
+        t("configure_service", "配置服务全部按钮命令：启动/快速启动/停止/重启/快速编译/部分编译/全量编译/端口/正则", "配置", "danger"),
         t("list_groups", "列出服务分组与成员", "分组", "read"),
         t("create_group", "新建服务分组", "分组", "control"),
         t("update_group", "更新分组名称或成员", "分组", "control"),
@@ -334,27 +334,64 @@ pub struct RegisterProjectReq {
     pub command: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct CompileSpec {
     pub command: String,
     /// maven|gradle|typescript|cargo|go|generic
     pub parser: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+#[serde(untagged)]
+pub enum CompileInput {
+    Simple(String),
+    Detailed(CompileSpec),
+}
+
+impl CompileInput {
+    pub fn into_parts(self) -> (String, Option<String>) {
+        match self {
+            Self::Simple(cmd) => (cmd, None),
+            Self::Detailed(spec) => (spec.command, spec.parser),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ConfigureServiceReq {
+    /// Target project name or directory path. If omitted and only one project is loaded, defaults to it.
     pub project: Option<String>,
+    /// Profile identifier (e.g. 'default', 'dev', 'web:dev'). Defaults to 'default'.
     #[serde(default = "default_profile")]
     pub profile: String,
+    /// Service name (e.g. 'web', 'desktop', 'api', 'LifeCycle').
+    pub service: Option<String>,
+    /// Environment name (e.g. 'dev', 'test', 'prod'). Defaults to 'dev'.
+    pub env_name: Option<String>,
+    /// Working directory relative to project root.
     pub workdir: Option<String>,
+    /// Environment variables.
     pub env: Option<std::collections::BTreeMap<String, String>>,
+    /// [启动] Main start command (e.g. 'cargo run -p lifecycle-app', 'npm run dev').
     pub start_command: Option<String>,
+    /// [快速] Fast start command (optional override for fast start button, e.g. skipping checks/rebuilds).
+    pub fast_start_command: Option<String>,
+    /// [停止] Stop command (optional graceful shutdown command/script, e.g. 'pkill -f lifecycle-app').
+    pub stop_command: Option<String>,
+    /// [重启] Restart command (optional custom restart command/script).
+    pub restart_command: Option<String>,
+    /// Readiness regex pattern in logs (e.g. 'Listening on', 'Ready in').
     pub ready_pattern: Option<String>,
+    /// Readiness port to probe via TCP/HTTP (e.g. 3000, 8080).
     pub ready_port: Option<u16>,
+    /// Readiness probe timeout in milliseconds (defaults to 120000).
     pub ready_timeout_ms: Option<u64>,
-    pub compile_quick: Option<CompileSpec>,
-    pub compile_partial: Option<CompileSpec>,
-    pub compile_full: Option<CompileSpec>,
+    /// [快速编译] Quick incremental compile command (e.g. 'cargo check' or { "command": "cargo check", "parser": "cargo" }).
+    pub compile_quick: Option<CompileInput>,
+    /// [部分编译] Partial compile command (e.g. 'cargo check -p {targets}' or { "command": "cargo check -p {targets}", "parser": "cargo" }).
+    pub compile_partial: Option<CompileInput>,
+    /// [全量编译] Full clean compile command (e.g. 'cargo build' or { "command": "cargo build", "parser": "cargo" }).
+    pub compile_full: Option<CompileInput>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -679,7 +716,7 @@ impl LifeCycleServer {
         .await
     }
 
-    #[tool(description = "Configure a service profile in lifecycle.toml (creates the profile if it does not exist): start command, readiness port/pattern/timeout, workdir, env and quick/partial/full compile commands. Other content and comments are preserved; config is reloaded hot.")]
+    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 7 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, plus workdir, env, ready_port, ready_pattern. Preserves existing formatting and reloads hot.")]
     async fn configure_service(
         &self,
         Parameters(req): Parameters<ConfigureServiceReq>,
@@ -691,15 +728,20 @@ impl LifeCycleServer {
             let engine = self.ws.core.engine(&project)?;
             let path = engine.lock().await.config_path().to_path_buf();
             let patch = lifecycle_core::config::ProfilePatch {
+                service: req.service.clone(),
+                env_name: req.env_name.clone(),
                 workdir: req.workdir.clone(),
                 env: req.env.clone(),
                 start_command: req.start_command.clone(),
+                fast_start_command: req.fast_start_command.clone(),
+                stop_command: req.stop_command.clone(),
+                restart_command: req.restart_command.clone(),
                 ready_pattern: req.ready_pattern.clone(),
                 ready_port: req.ready_port,
                 ready_timeout_ms: req.ready_timeout_ms,
-                compile_quick: req.compile_quick.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
-                compile_partial: req.compile_partial.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
-                compile_full: req.compile_full.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
+                compile_quick: req.compile_quick.map(|s| s.into_parts()),
+                compile_partial: req.compile_partial.map(|s| s.into_parts()),
+                compile_full: req.compile_full.map(|s| s.into_parts()),
             };
             lifecycle_core::config::update_profile(&path, &req.profile, &patch)?;
             let expose = {

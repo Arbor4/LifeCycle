@@ -125,7 +125,7 @@ pub fn spawn(
 }
 
 #[cfg(unix)]
-fn shell_command(command: &str) -> Command {
+pub fn shell_command(command: &str) -> Command {
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(command);
     cmd
@@ -177,7 +177,7 @@ fn toolchain_path() -> String {
 }
 
 #[cfg(not(unix))]
-fn shell_command(command: &str) -> Command {
+pub fn shell_command(command: &str) -> Command {
     let mut cmd = Command::new("cmd");
     cmd.arg("/C").arg(command);
     cmd

@@ -160,10 +160,15 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/projects/detect", post(detect_project))
         .route("/api/projects/{project}", delete(unregister_project))
         .route("/api/projects/{project}/rename", post(rename_project_handler))
+        .route("/api/projects/{project}/services/{service}/rename", post(rename_service_handler))
         .route("/api/projects/{project}/profiles", post(add_service))
         .route(
             "/api/projects/{project}/profiles/{profile}",
-            delete(delete_service_profile),
+            put(update_service_profile).delete(delete_service_profile),
+        )
+        .route(
+            "/api/projects/{project}/profiles/{profile}/rename",
+            post(rename_profile_handler),
         )
         .route("/api/reveal-path", post(reveal_path))
         .route("/api/settings", get(get_settings).put(put_settings))
@@ -291,8 +296,25 @@ async fn register_project(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct AddServiceBody {
-    profile: String,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    env_name: Option<String>,
+    #[serde(default)]
+    profile: Option<String>,
     start_command: String,
+    #[serde(default)]
+    fast_start_command: Option<String>,
+    #[serde(default)]
+    stop_command: Option<String>,
+    #[serde(default)]
+    restart_command: Option<String>,
+    #[serde(default)]
+    compile_quick: Option<String>,
+    #[serde(default)]
+    compile_partial: Option<String>,
+    #[serde(default)]
+    compile_full: Option<String>,
     #[serde(default)]
     workdir: Option<String>,
     #[serde(default)]
@@ -315,10 +337,24 @@ async fn add_service(
         "add_service",
         json!({"project": project, "body": body}),
         async {
-            let name = body.profile.trim().to_string();
-            if name.is_empty() {
-                return Err(Error::Config("service name must not be empty".into()));
-            }
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            let config = lifecycle_core::config::Config::load(&path)?;
+
+            // Determine unique profile key
+            let name = if let Some(p) = body.profile.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                p.to_string()
+            } else if let Some(svc) = body.service.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let env = body.env_name.as_deref().unwrap_or("dev").trim();
+                if (env == "dev" || env == "default") && !config.profiles.contains_key(svc) {
+                    svc.to_string()
+                } else {
+                    format!("{svc}:{env}")
+                }
+            } else {
+                return Err(Error::Config("service name or profile must not be empty".into()));
+            };
+
             if body.start_command.trim().is_empty() {
                 return Err(Error::Config("start command must not be empty".into()));
             }
@@ -332,22 +368,26 @@ async fn add_service(
                     ));
                 }
             }
-            let engine = state.ws.engine(&project)?;
-            let path = engine.lock().await.config_path().to_path_buf();
-            let config = lifecycle_core::config::Config::load(&path)?;
             if config.profiles.contains_key(&name) {
                 return Err(Error::Config(format!(
                     "service '{name}' already exists in project '{project}'"
                 )));
             }
             let patch = lifecycle_core::config::ProfilePatch {
+                service: body.service.clone(),
+                env_name: body.env_name.clone(),
                 workdir: body.workdir.clone(),
                 env: body.env.clone(),
                 start_command: Some(body.start_command.trim().to_string()),
+                fast_start_command: body.fast_start_command.filter(|s| !s.trim().is_empty()),
+                stop_command: body.stop_command.filter(|s| !s.trim().is_empty()),
+                restart_command: body.restart_command.filter(|s| !s.trim().is_empty()),
                 ready_pattern: body.ready_pattern.clone(),
                 ready_port: body.ready_port,
                 ready_timeout_ms: body.ready_timeout_ms,
-                ..Default::default()
+                compile_quick: body.compile_quick.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
+                compile_partial: body.compile_partial.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
+                compile_full: body.compile_full.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
             };
             lifecycle_core::config::update_profile(&path, &name, &patch)?;
             let expose = {
@@ -357,6 +397,153 @@ async fn add_service(
             };
             state.ws.set_expose(&project, expose);
             Ok(json!({"ok": true, "project": project, "profile": name}))
+        },
+    )
+    .await
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct UpdateServiceBody {
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    env_name: Option<String>,
+    #[serde(default)]
+    start_command: Option<String>,
+    #[serde(default)]
+    fast_start_command: Option<String>,
+    #[serde(default)]
+    stop_command: Option<String>,
+    #[serde(default)]
+    restart_command: Option<String>,
+    #[serde(default)]
+    compile_quick: Option<String>,
+    #[serde(default)]
+    compile_partial: Option<String>,
+    #[serde(default)]
+    compile_full: Option<String>,
+    #[serde(default)]
+    workdir: Option<String>,
+    #[serde(default)]
+    ready_port: Option<u16>,
+    #[serde(default)]
+    ready_pattern: Option<String>,
+    #[serde(default)]
+    ready_timeout_ms: Option<u64>,
+    #[serde(default)]
+    env: Option<BTreeMap<String, String>>,
+}
+
+async fn update_service_profile(
+    State(state): State<Arc<AppState>>,
+    Path((project, profile)): Path<(String, String)>,
+    Json(body): Json<UpdateServiceBody>,
+) -> ApiResult {
+    traced(
+        &state,
+        "update_service_profile",
+        json!({"project": project, "profile": profile, "body": body}),
+        async {
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            let config = lifecycle_core::config::Config::load(&path)?;
+            if !config.profiles.contains_key(&profile) {
+                return Err(Error::NotFound(format!(
+                    "service profile '{profile}' not found in project '{project}'"
+                )));
+            }
+            if let Some(w) = &body.workdir {
+                let p = std::path::Path::new(w);
+                if p.is_absolute()
+                    || p.components().any(|c| matches!(c, std::path::Component::ParentDir))
+                {
+                    return Err(Error::Config(
+                        "workdir must be a relative path inside the project root".into(),
+                    ));
+                }
+            }
+            let patch = lifecycle_core::config::ProfilePatch {
+                service: body.service,
+                env_name: body.env_name,
+                workdir: body.workdir,
+                env: body.env,
+                start_command: body.start_command.map(|c| c.trim().to_string()),
+                fast_start_command: body.fast_start_command.map(|c| c.trim().to_string()),
+                stop_command: body.stop_command.map(|c| c.trim().to_string()),
+                restart_command: body.restart_command.map(|c| c.trim().to_string()),
+                ready_pattern: body.ready_pattern,
+                ready_port: body.ready_port,
+                ready_timeout_ms: body.ready_timeout_ms,
+                compile_quick: body.compile_quick.map(|c| (c, None)),
+                compile_partial: body.compile_partial.map(|c| (c, None)),
+                compile_full: body.compile_full.map(|c| (c, None)),
+            };
+            lifecycle_core::config::update_profile(&path, &profile, &patch)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "project": project, "profile": profile}))
+        },
+    )
+    .await
+}
+
+async fn rename_service_handler(
+    State(state): State<Arc<AppState>>,
+    Path((project, service)): Path<(String, String)>,
+    Json(body): Json<RenameProjectBody>,
+) -> ApiResult {
+    traced(
+        &state,
+        "rename_service",
+        json!({"project": project, "service": service, "new_name": body.name}),
+        async {
+            let new_name = body.name.trim().to_string();
+            if new_name.is_empty() {
+                return Err(Error::Config("service name must not be empty".into()));
+            }
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            lifecycle_core::config::rename_service(&path, &service, &new_name)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "old_service": service, "new_service": new_name}))
+        },
+    )
+    .await
+}
+
+async fn rename_profile_handler(
+    State(state): State<Arc<AppState>>,
+    Path((project, profile)): Path<(String, String)>,
+    Json(body): Json<RenameProjectBody>,
+) -> ApiResult {
+    traced(
+        &state,
+        "rename_profile",
+        json!({"project": project, "profile": profile, "new_name": body.name}),
+        async {
+            let new_name = body.name.trim().to_string();
+            if new_name.is_empty() {
+                return Err(Error::Config("profile name must not be empty".into()));
+            }
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            lifecycle_core::config::rename_profile(&path, &profile, &new_name)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "old_profile": profile, "new_profile": new_name}))
         },
     )
     .await

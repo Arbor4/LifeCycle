@@ -15,8 +15,16 @@ export default function RegisterModal({ kind = "project", projects = [], default
 function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
   const { t } = useI18n();
   const [project, setProject] = useState(defaultProject || projects[0]?.project || "");
-  const [profile, setProfile] = useState("");
-  const [command, setCommand] = useState("");
+  const [service, setService] = useState("web");
+  const [envChoice, setEnvChoice] = useState("dev");
+  const [customEnv, setCustomEnv] = useState("");
+  const [command, setCommand] = useState("npm run dev");
+  const [fastCommand, setFastCommand] = useState("");
+  const [stopCommand, setStopCommand] = useState("");
+  const [restartCommand, setRestartCommand] = useState("");
+  const [compileQuick, setCompileQuick] = useState("");
+  const [compilePartial, setCompilePartial] = useState("");
+  const [compileFull, setCompileFull] = useState("");
   const [workdir, setWorkdir] = useState("");
   const [port, setPort] = useState("");
   const [pattern, setPattern] = useState("");
@@ -27,54 +35,78 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
   const PRESETS = [
     {
       id: "web",
-      name: "🌐 Web 前端 (网页布局调试)",
-      profile: "web",
+      icon: "globe",
+      name: "Web 前端 (网页布局调试)",
+      service: "web",
+      env: "dev",
       command: "npm run dev",
+      compileQuick: "npm run build:check",
+      compileFull: "npm run build",
       workdir: "ui",
       port: "5173",
       desc: "只拉起前端 Vite/Webpack 调试页面布局，轻量快速",
     },
     {
       id: "desktop",
-      name: "🖥️ 桌面端 (Tauri / App)",
-      profile: "desktop",
+      icon: "monitor",
+      name: "桌面端 (Tauri / App)",
+      service: "desktop",
+      env: "dev",
       command: "cargo tauri dev",
+      compileQuick: "cargo check",
+      compileFull: "cargo build",
       workdir: ".",
       port: "",
       desc: "拉起完整桌面端应用，测试系统交互与托盘",
     },
     {
       id: "dev",
-      name: "🚀 开发环境 (dev)",
-      profile: "dev",
+      icon: "rocket",
+      name: "开发环境 (dev)",
+      service: "app",
+      env: "dev",
       command: "npm run dev",
+      compileQuick: "",
+      compileFull: "",
       workdir: ".",
       port: "",
       desc: "日常开发环境调试",
     },
     {
       id: "test",
-      name: "🧪 测试环境 (test)",
-      profile: "test",
+      icon: "flask",
+      name: "测试环境 (test)",
+      service: "app",
+      env: "test",
       command: "npm run test",
+      compileQuick: "",
+      compileFull: "",
       workdir: ".",
       port: "",
       desc: "执行自动化测试与质量检查",
     },
     {
       id: "prod",
-      name: "📦 生产预览 (prod)",
-      profile: "prod",
+      icon: "pkg",
+      name: "生产预览 (prod)",
+      service: "app",
+      env: "prod",
       command: "npm run preview",
+      compileQuick: "",
+      compileFull: "",
       workdir: ".",
       port: "4173",
       desc: "模拟真实打包后的生产预览环境",
     },
     {
       id: "api",
-      name: "⚙️ 后端 API 服务",
-      profile: "api",
+      icon: "cpu",
+      name: "后端 API 服务",
+      service: "api",
+      env: "dev",
       command: "cargo run",
+      compileQuick: "cargo check",
+      compileFull: "cargo build",
       workdir: ".",
       port: "8080",
       desc: "独立后端服务与接口",
@@ -82,19 +114,30 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
   ];
 
   const proj = useMemo(() => projects.find((p) => p.project === project), [projects, project]);
-  const name = profile.trim();
-  const duplicate = !!name && !!proj?.profiles.some((s) => s.profile === name);
-  const canSave = !!project && !!name && !!command.trim() && !duplicate && !saving;
+  const finalEnv = envChoice === "custom" ? customEnv.trim() : envChoice;
+  const svcName = service.trim();
+
+  // 计算唯一的 profile key:
+  const profileKey = useMemo(() => {
+    if (!svcName) return "";
+    if (finalEnv && finalEnv !== "default") {
+      return `${svcName}:${finalEnv}`;
+    }
+    return svcName;
+  }, [svcName, finalEnv]);
+
+  const duplicate = !!profileKey && !!proj?.profiles?.some((s) => s.profile === profileKey);
+  const canSave = !!project && !!svcName && !!finalEnv && !!command.trim() && !duplicate && !saving;
 
   function applyPreset(p) {
-    let target = p.profile;
-    if (proj?.profiles?.some((s) => s.profile === target)) {
-      target = `${p.profile}-2`;
-    }
-    setProfile(target);
-    setCommand(p.command);
-    if (p.workdir) setWorkdir(p.workdir);
-    if (p.port) setPort(p.port);
+    setService(p.service);
+    setEnvChoice(p.env || "dev");
+    setCustomEnv("");
+    setCommand(p.command || "");
+    setCompileQuick(p.compileQuick || "");
+    setCompileFull(p.compileFull || "");
+    setWorkdir(p.workdir || "");
+    setPort(p.port || "");
   }
 
   async function save(e) {
@@ -105,16 +148,24 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
       await api(`/api/projects/${encodeURIComponent(project)}/profiles`, {
         method: "POST",
         body: JSON.stringify({
-          profile: name,
+          service: svcName,
+          env_name: finalEnv,
+          profile: profileKey,
           start_command: command.trim(),
+          fast_start_command: fastCommand.trim() || undefined,
+          stop_command: stopCommand.trim() || undefined,
+          restart_command: restartCommand.trim() || undefined,
+          compile_quick: compileQuick.trim() || undefined,
+          compile_partial: compilePartial.trim() || undefined,
+          compile_full: compileFull.trim() || undefined,
           workdir: workdir.trim() || undefined,
           ready_port: port ? Number(port) : undefined,
           ready_pattern: pattern.trim() || undefined,
           ready_timeout_ms: timeout ? Number(timeout) : undefined,
         }),
       });
-      pushToast(t("已添加服务「{key}」", { key: `${project}/${name}` }), { kind: "success" });
-      onSaved(project, name);
+      pushToast(t("已添加服务「{key}」", { key: `${project}/${profileKey}` }), { kind: "success" });
+      onSaved(project, profileKey);
     } catch (err) {
       pushToast(err.message, { kind: "error" });
     } finally {
@@ -127,9 +178,9 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
       title={t("添加服务")}
       icon="plus"
       tone="grn"
-      width={600}
+      width={640}
       onClose={onClose}
-      subtitle={t("在已注册项目下新增服务：配置启动命令与就绪检查即可，项目文件夹沿用外层已选项目。")}
+      subtitle={t("在当前项目下新增服务与环境配置：包含运行命令、快速/全量编译命令，方便独立启动或调试。")}
       footer={
         <>
           <button type="button" className="btn" onClick={onClose}>
@@ -180,11 +231,12 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
               <button
                 key={p.id}
                 type="button"
-                className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-2.5 py-1 text-xs text-[var(--txt)] hover:border-[var(--blu)] hover:text-[var(--blu)] transition-colors"
+                className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-2.5 py-1 text-xs text-[var(--txt)] hover:border-[var(--blu)] hover:text-[var(--blu)] transition-colors"
                 title={t(p.desc)}
                 onClick={() => applyPreset(p)}
               >
-                {t(p.name)}
+                <Icon name={p.icon} size={12} className="text-[var(--dim)]" />
+                <span>{t(p.name)}</span>
               </button>
             ))}
           </div>
@@ -193,14 +245,106 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
         <div className="mt-3.5 grid grid-cols-2 gap-3">
           <label className="block">
             <span className="field-label">
-              {t("服务名称（profile）")} <span className="text-[var(--red)]">*</span>
+              {t("服务名称")} <span className="text-[var(--red)]">*</span>
             </span>
             <input
               className="input mono w-full"
-              placeholder={t("例如 dev / api / web")}
-              value={profile}
-              onChange={(e) => setProfile(e.target.value)}
+              placeholder={t("例如 web / desktop / api")}
+              value={service}
+              onChange={(e) => setService(e.target.value)}
               required
+            />
+          </label>
+
+          <label className="block">
+            <span className="field-label">
+              {t("环境 / Profile")} <span className="text-[var(--red)]">*</span>
+            </span>
+            <div className="flex gap-1.5">
+              <select
+                className="input mono flex-1"
+                value={envChoice}
+                onChange={(e) => setEnvChoice(e.target.value)}
+              >
+                <option value="dev">dev ({t("开发环境")})</option>
+                <option value="test">test ({t("测试环境")})</option>
+                <option value="prod">prod ({t("生产环境")})</option>
+                <option value="custom">{t("+ 自定义环境…")}</option>
+              </select>
+              {envChoice === "custom" && (
+                <input
+                  className="input mono w-28"
+                  placeholder={t("环境名")}
+                  value={customEnv}
+                  onChange={(e) => setCustomEnv(e.target.value)}
+                  required
+                />
+              )}
+            </div>
+          </label>
+        </div>
+
+        {duplicate && (
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--red)]">
+            <Icon name="warn" size={12} className="flex-none" />
+            {t("该项目下已存在配置「{key}」，请更换服务名或环境", { key: profileKey })}
+          </p>
+        )}
+
+        <label className="mt-3 block">
+          <span className="field-label flex items-center justify-between">
+            <span>
+              {t("启动命令")} <span className="text-[var(--red)]">*</span>
+            </span>
+            <span className="text-[11px] font-normal text-[var(--dim)]">{t("运行服务的主要命令")}</span>
+          </span>
+          <div className="relative">
+            <input
+              className="input mono w-full pl-7!"
+              placeholder={t("例如 npm run dev / cargo tauri dev / cargo run")}
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              required
+            />
+            <Icon name="play" size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--grn)]" />
+          </div>
+        </label>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="field-label flex items-center gap-1">
+              <Icon name="compile" size={11} className="text-[var(--blu)]" />
+              {t("快速编译命令（可选）")}
+            </span>
+            <input
+              className="input mono w-full"
+              placeholder={t("例如 npm run build:check / cargo check")}
+              value={compileQuick}
+              onChange={(e) => setCompileQuick(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="field-label flex items-center gap-1">
+              <Icon name="boxes" size={11} className="text-[var(--pur)]" />
+              {t("全量编译命令（可选）")}
+            </span>
+            <input
+              className="input mono w-full"
+              placeholder={t("例如 npm run build / cargo build")}
+              value={compileFull}
+              onChange={(e) => setCompileFull(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="field-label">{t("工作目录（相对项目根，可选）")}</span>
+            <input
+              className="input mono w-full"
+              placeholder="."
+              value={workdir}
+              onChange={(e) => setWorkdir(e.target.value)}
             />
           </label>
           <label className="block">
@@ -216,78 +360,96 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
             />
           </label>
         </div>
-        {duplicate && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--red)]">
-            <Icon name="warn" size={12} className="flex-none" />
-            {t("该项目下已存在同名服务「{name}」，请换一个名称", { name })}
-          </p>
-        )}
 
-        <label className="mt-3 block">
-          <span className="field-label">
-            {t("启动命令")} <span className="text-[var(--red)]">*</span>
-          </span>
-          <input
-            className="input mono w-full"
-            placeholder={t("例如 npm run dev / cargo run")}
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            required
-          />
-        </label>
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="field-label">{t("工作目录（相对项目根，可选）")}</span>
-            <input
-              className="input mono w-full"
-              placeholder="."
-              value={workdir}
-              onChange={(e) => setWorkdir(e.target.value)}
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              type="button"
-              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
-              onClick={() => setShowAdvanced((v) => !v)}
-            >
-              <Icon name={showAdvanced ? "down" : "right"} size={12} />
-              {t("就绪检查（正则 / 超时）")}
-            </button>
-          </div>
+        <div className="mt-2.5">
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            <Icon name={showAdvanced ? "down" : "right"} size={12} />
+            {t("更多高级命令与就绪检查（快速启动 / 停止 / 重启 / 部分编译 / 正则）")}
+          </button>
+          {showAdvanced && (
+            <div className="mt-1.5 grid grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 p-3">
+              <label className="block">
+                <span className="field-label flex items-center gap-1">
+                  <Icon name="zap" size={11} className="text-[var(--yel)]" />
+                  {t("快速启动命令（可选）")}
+                </span>
+                <input
+                  className="input mono w-full"
+                  placeholder={t("如为空则使用默认启动命令且跳过等待")}
+                  value={fastCommand}
+                  onChange={(e) => setFastCommand(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="field-label flex items-center gap-1">
+                  <Icon name="stop" size={11} className="text-[var(--red)]" />
+                  {t("停止命令（可选）")}
+                </span>
+                <input
+                  className="input mono w-full"
+                  placeholder={t("自定义停止命令，如为空则发信号终止")}
+                  value={stopCommand}
+                  onChange={(e) => setStopCommand(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="field-label flex items-center gap-1">
+                  <Icon name="restart" size={11} className="text-[var(--yel)]" />
+                  {t("重启命令（可选）")}
+                </span>
+                <input
+                  className="input mono w-full"
+                  placeholder={t("自定义重启命令，如为空则先停后启")}
+                  value={restartCommand}
+                  onChange={(e) => setRestartCommand(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="field-label flex items-center gap-1">
+                  <Icon name="grid" size={11} className="text-[var(--cyan)]" />
+                  {t("部分编译命令（可选）")}
+                </span>
+                <input
+                  className="input mono w-full"
+                  placeholder="例如 cargo check -p {targets}"
+                  value={compilePartial}
+                  onChange={(e) => setCompilePartial(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">{t("就绪正则（可选）")}</span>
+                <input
+                  className="input mono w-full"
+                  placeholder={t("例如 Local:.*http")}
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">{t("就绪超时（毫秒，可选）")}</span>
+                <input
+                  className="input mono w-full"
+                  type="number"
+                  min={1000}
+                  step={1000}
+                  placeholder="30000"
+                  value={timeout}
+                  onChange={(e) => setTimeoutMs(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
         </div>
-        {showAdvanced && (
-          <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 p-3">
-            <label className="block">
-              <span className="field-label">{t("就绪正则（可选）")}</span>
-              <input
-                className="input mono w-full"
-                placeholder={t("例如 Local:.*http")}
-                value={pattern}
-                onChange={(e) => setPattern(e.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="field-label">{t("就绪超时（毫秒，可选）")}</span>
-              <input
-                className="input mono w-full"
-                type="number"
-                min={1000}
-                step={1000}
-                placeholder="30000"
-                value={timeout}
-                onChange={(e) => setTimeoutMs(e.target.value)}
-              />
-            </label>
-          </div>
-        )}
 
         <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-[var(--dim)]">
           <Icon name="shield" size={12} className="mt-0.5 flex-none text-[var(--grn)]" />
           <span>
-            {t("服务配置将写入项目 lifecycle.toml 的 [profiles.{name}]，保存后热加载并出现在服务列表。", {
-              name: name || "name",
+            {t("配置将写入项目 lifecycle.toml 的 [profiles.\"{name}\"]，保存后热加载并立即生效。", {
+              name: profileKey || "name",
             })}
           </span>
         </p>

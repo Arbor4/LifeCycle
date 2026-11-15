@@ -274,7 +274,7 @@ export default function App() {
           <>
             <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <StatusCard status={current} project={sel.project} />
+                <StatusCard status={current} project={sel.project} onRefresh={refresh} onSelect={openDetail} />
 
                 {/* 运行与编译操作区分开展示 */}
                 <div className="flex flex-wrap items-center justify-end gap-3">
@@ -405,7 +405,7 @@ export default function App() {
               ) : tab === "errors" ? (
                 <ErrorsPanel result={currentErrors} />
               ) : (
-                <ConfigPanel project={sel.project} />
+                <ConfigPanel project={sel.project} profile={sel.profile} current={current} onRefresh={refresh} />
               )}
             </div>
           </>
