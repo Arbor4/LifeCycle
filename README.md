@@ -218,7 +218,7 @@ Notes:
 
 ## Adding services & auto-detection
 
-UI: **Services → Add project** (shortcut `n`):
+UI: **Services → Add service** (shortcut `n`) for service-level registration, or **Projects → Add** in the sidebar for project-level import. The dialog title follows the entry point ("Add / import service" vs "Add / import project"):
 
 1. Type a project directory (required) or click **Choose folder…** to use the native OS directory picker. While typing, the stack is probed live and previewed (kind / default start command / default port). Optionally override name / ready port / start command.
 2. No `lifecycle.toml` in the directory → detect and generate:
