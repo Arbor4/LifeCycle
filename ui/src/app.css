@@ -105,6 +105,15 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* 去除整页双指滚动的弹性回弹：文档本身不滚动，滚动只发生在内部容器 */
+  overscroll-behavior: none;
+}
+html {
+  overflow: hidden;
+}
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 body {
   font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;

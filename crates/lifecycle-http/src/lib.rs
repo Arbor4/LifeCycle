@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
 use std::path::PathBuf;
@@ -13,7 +12,7 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use futures::Stream;
 use lifecycle_core::compile::CompileKind;
-use lifecycle_core::groups::{new_id, validate, Group, GroupMember, GroupStore};
+use lifecycle_core::groups::{new_id, validate, Group, GroupMember};
 use lifecycle_core::workspace::Workspace;
 use lifecycle_core::Error;
 use serde::{Deserialize, Serialize};
@@ -55,8 +54,6 @@ pub struct AppState {
     pub ws: Arc<Workspace>,
     pub settings: Mutex<Settings>,
     pub settings_path: PathBuf,
-    pub diagnostics: Mutex<VecDeque<Value>>,
-    pub groups: GroupStore,
     pub port: u16,
 }
 
@@ -67,56 +64,14 @@ impl AppState {
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default();
-        let groups = GroupStore::new(home_dir().join(".lifecycle").join("groups.json"));
-        if !groups.path().exists() {
-            // 首启种子：把已加载项目的首个 profile 组成示例分组，便于体验一键启动。
-            let members: Vec<GroupMember> = ws
-                .names()
-                .into_iter()
-                .take(3)
-                .filter_map(|name| {
-                    let engine = ws.engine(&name).ok()?;
-                    let guard = engine.try_lock().ok()?;
-                    let profile = guard.list().ok()?.first()?.profile.clone();
-                    Some(GroupMember {
-                        project: name,
-                        profile,
-                    })
-                })
-                .collect();
-            if !members.is_empty() {
-                let seed = vec![Group {
-                    id: new_id(),
-                    name: "示例分组".into(),
-                    members,
-                    created_at_ms: lifecycle_core::process::now_ms(),
-                }];
-                let _ = groups.save(&seed);
-            }
-        }
         Self {
             ws,
             settings: Mutex::new(settings),
             settings_path,
-            diagnostics: Mutex::new(VecDeque::new()),
-            groups,
             port: 39517,
         }
     }
 
-    async fn record(&self, tool: &str, started: Instant, ok: bool) {
-        let entry = json!({
-            "tool": tool,
-            "duration_ms": started.elapsed().as_millis() as u64,
-            "exit_code": if ok { 0 } else { 1 },
-            "ts": lifecycle_core::process::now_ms(),
-        });
-        let mut diags = self.diagnostics.lock().await;
-        if diags.len() >= 200 {
-            diags.pop_front();
-        }
-        diags.push_back(entry);
-    }
 }
 
 fn home_dir() -> PathBuf {
@@ -167,14 +122,25 @@ impl From<serde_json::Error> for ApiError {
 
 type ApiResult = Result<Json<Value>, ApiError>;
 
-async fn traced<T, Fut>(state: &AppState, tool: &str, fut: Fut) -> ApiResult
+async fn traced<T, Fut>(state: &AppState, tool: &str, input: Value, fut: Fut) -> ApiResult
 where
     T: Serialize,
     Fut: Future<Output = lifecycle_core::Result<T>>,
 {
     let started = Instant::now();
     let result = fut.await;
-    state.record(tool, started, result.is_ok()).await;
+    let (exit, output) = match &result {
+        Ok(v) => (0, serde_json::to_value(v).unwrap_or(Value::Null)),
+        Err(e) => (1, json!({"error": {"code": e.code(), "message": e.to_string()}})),
+    };
+    state.ws.call_log().push(
+        "ui",
+        tool,
+        started.elapsed().as_millis() as u64,
+        exit,
+        input,
+        output,
+    );
     match result {
         Ok(v) => Ok(Json(serde_json::to_value(v).map_err(|e| {
             Error::Other(e.to_string())
@@ -250,7 +216,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 
 async fn list_projects(State(state): State<Arc<AppState>>) -> ApiResult {
-    traced(&state, "list_projects", async {
+    traced(&state, "list_projects", json!({}), async {
         let mut out = Vec::new();
         for name in state.ws.names() {
             let engine = state.ws.engine(&name)?;
@@ -262,7 +228,7 @@ async fn list_projects(State(state): State<Arc<AppState>>) -> ApiResult {
     .await
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct RegisterBody {
     path: String,
     name: Option<String>,
@@ -274,7 +240,7 @@ async fn register_project(
     State(state): State<Arc<AppState>>,
     Json(body): Json<RegisterBody>,
 ) -> ApiResult {
-    traced(&state, "register_project", async {
+    traced(&state, "register_project", json!(body), async {
         let root = std::fs::canonicalize(&body.path)
             .map_err(|_| Error::Config(format!("directory not found: {}", body.path)))?;
         if !root.is_dir() {
@@ -423,7 +389,7 @@ async fn unregister_project(
     State(state): State<Arc<AppState>>,
     Path(project): Path<String>,
 ) -> ApiResult {
-    traced(&state, "unregister_project", async {
+    traced(&state, "unregister_project", json!({"project": project}), async {
         let engine = state.ws.engine(&project)?;
         {
             let mut guard = engine.lock().await;
@@ -448,7 +414,7 @@ async fn profile_status(
     State(state): State<Arc<AppState>>,
     Path((project, profile)): Path<(String, String)>,
 ) -> ApiResult {
-    traced(&state, "get_status", async {
+    traced(&state, "get_status", json!({"project": project, "profile": profile}), async {
         let engine = state.ws.engine(&project)?;
         let status = engine.lock().await.status(&profile)?;
         Ok(status)
@@ -477,7 +443,7 @@ async fn start_profile(
         wait: true,
         timeout_ms: None,
     });
-    traced(&state, "start_project", async {
+    traced(&state, "start_project", json!({"project": project, "profile": profile, "wait": body.wait, "timeout_ms": body.timeout_ms}), async {
         let engine = state.ws.engine(&project)?;
         let mut guard = engine.lock().await;
         let outcome = guard
@@ -507,7 +473,7 @@ async fn stop_profile(
             b.0.timeout_ms
         }
     });
-    traced(&state, "stop_project", async {
+    traced(&state, "stop_project", json!({"project": project, "profile": profile, "timeout_ms": timeout}), async {
         let engine = state.ws.engine(&project)?;
         let mut guard = engine.lock().await;
         let outcome = guard.stop_with_timeout(&profile, timeout).await?;
@@ -533,7 +499,7 @@ async fn restart_profile(
         recompile: false,
         wait: true,
     });
-    traced(&state, "restart_project", async {
+    traced(&state, "restart_project", json!({"project": project, "profile": profile, "recompile": body.recompile, "wait": body.wait}), async {
         let engine = state.ws.engine(&project)?;
         let mut guard = engine.lock().await;
         if body.recompile {
@@ -564,7 +530,7 @@ async fn compile_profile(
     Path((project, profile)): Path<(String, String)>,
     Json(body): Json<CompileBody>,
 ) -> ApiResult {
-    traced(&state, "compile", async {
+    traced(&state, "compile", json!({"project": project, "profile": profile, "kind": body.kind, "targets": body.targets}), async {
         let kind = CompileKind::parse(&body.kind)?;
         let engine = state.ws.engine(&project)?;
         let mut guard = engine.lock().await;
@@ -578,7 +544,7 @@ async fn cancel_compile(
     State(state): State<Arc<AppState>>,
     Path((project, profile)): Path<(String, String)>,
 ) -> ApiResult {
-    traced(&state, "cancel_compile", async {
+    traced(&state, "cancel_compile", json!({"project": project, "profile": profile}), async {
         let engine = state.ws.engine(&project)?;
         let cancelled = engine.lock().await.cancel_compile(&profile)?;
         Ok(json!({"cancelled": cancelled}))
@@ -609,7 +575,7 @@ async fn get_logs(
     Path((project, profile)): Path<(String, String)>,
     Query(q): Query<LogsQuery>,
 ) -> ApiResult {
-    traced(&state, "get_logs", async {
+    traced(&state, "get_logs", json!({"project": project, "profile": profile, "source": q.source, "lines": q.lines, "filter": q.filter, "since": q.since}), async {
         let engine = state.ws.engine(&project)?;
         let page = engine.lock().await.logs(
             &profile,
@@ -686,7 +652,7 @@ async fn list_modules(
     State(state): State<Arc<AppState>>,
     Path(project): Path<String>,
 ) -> ApiResult {
-    traced(&state, "list_modules", async {
+    traced(&state, "list_modules", json!({"project": project}), async {
         let engine = state.ws.engine(&project)?;
         let guard = engine.lock().await;
         let mut all = Vec::new();
@@ -713,7 +679,7 @@ async fn reload_config(
     State(state): State<Arc<AppState>>,
     Path(project): Path<String>,
 ) -> ApiResult {
-    traced(&state, "reload_config", async {
+    traced(&state, "reload_config", json!({"project": project}), async {
         let engine = state.ws.engine(&project)?;
         let expose = {
             let mut guard = engine.lock().await;
@@ -747,8 +713,7 @@ async fn put_settings(
 }
 
 async fn get_diagnostics(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let diags = state.diagnostics.lock().await;
-    Json(Value::Array(diags.iter().cloned().collect()))
+    Json(json!(state.ws.call_log().list()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -883,7 +848,7 @@ struct GroupBody {
 }
 
 async fn list_groups(State(state): State<Arc<AppState>>) -> ApiResult {
-    Ok(Json(serde_json::to_value(state.groups.load()?)?))
+    Ok(Json(serde_json::to_value(state.ws.groups().load()?)?))
 }
 
 async fn create_group(
@@ -891,7 +856,7 @@ async fn create_group(
     Json(body): Json<GroupBody>,
 ) -> ApiResult {
     validate(&body.name, &body.members)?;
-    let mut groups = state.groups.load()?;
+    let mut groups = state.ws.groups().load()?;
     let group = Group {
         id: new_id(),
         name: body.name,
@@ -899,7 +864,7 @@ async fn create_group(
         created_at_ms: lifecycle_core::process::now_ms(),
     };
     groups.push(group.clone());
-    state.groups.save(&groups)?;
+    state.ws.groups().save(&groups)?;
     Ok(Json(serde_json::to_value(group)?))
 }
 
@@ -909,7 +874,7 @@ async fn upsert_group(
     Json(body): Json<GroupBody>,
 ) -> ApiResult {
     validate(&body.name, &body.members)?;
-    let mut groups = state.groups.load()?;
+    let mut groups = state.ws.groups().load()?;
     let group = Group {
         id: id.clone(),
         name: body.name,
@@ -920,7 +885,7 @@ async fn upsert_group(
         Some(g) => *g = group.clone(),
         None => groups.push(group.clone()),
     }
-    state.groups.save(&groups)?;
+    state.ws.groups().save(&groups)?;
     Ok(Json(serde_json::to_value(group)?))
 }
 
@@ -928,19 +893,20 @@ async fn delete_group(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult {
-    let mut groups = state.groups.load()?;
+    let mut groups = state.ws.groups().load()?;
     let pos = groups
         .iter()
         .position(|g| g.id == id)
         .ok_or_else(|| Error::NotFound(format!("group '{id}'")))?;
     let removed = groups.remove(pos);
-    state.groups.save(&groups)?;
+    state.ws.groups().save(&groups)?;
     Ok(Json(serde_json::to_value(removed)?))
 }
 
 fn find_group(state: &AppState, id: &str) -> lifecycle_core::Result<Group> {
     state
-        .groups
+        .ws
+        .groups()
         .load()?
         .into_iter()
         .find(|g| g.id == id)
@@ -1028,7 +994,7 @@ async fn start_group(
     body: Option<Json<GroupOpBody>>,
 ) -> ApiResult {
     let wait = body.map(|b| b.0.wait).unwrap_or(true);
-    traced(&state, "group_start", async {
+    traced(&state, "group_start", json!({"id": id, "wait": wait}), async {
         let results = run_group(&state, &id, "start", wait).await?;
         Ok(json!({"results": results}))
     })
@@ -1039,7 +1005,7 @@ async fn stop_group(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult {
-    traced(&state, "group_stop", async {
+    traced(&state, "group_stop", json!({"id": id}), async {
         let results = run_group(&state, &id, "stop", false).await?;
         Ok(json!({"results": results}))
     })
@@ -1052,7 +1018,7 @@ async fn restart_group(
     body: Option<Json<GroupOpBody>>,
 ) -> ApiResult {
     let wait = body.map(|b| b.0.wait).unwrap_or(true);
-    traced(&state, "group_restart", async {
+    traced(&state, "group_restart", json!({"id": id, "wait": wait}), async {
         let results = run_group(&state, &id, "restart", wait).await?;
         Ok(json!({"results": results}))
     })

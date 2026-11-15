@@ -30,6 +30,15 @@ pub const ALL_TOOLS: &[&str] = &[
     "get_logs",
     "watch_logs",
     "reload_config",
+    "register_project",
+    "configure_service",
+    "list_groups",
+    "create_group",
+    "update_group",
+    "delete_group",
+    "start_group",
+    "stop_group",
+    "restart_group",
 ];
 
 /// Whether a tool is allowed by an expose whitelist. An empty whitelist means
@@ -76,6 +85,15 @@ pub fn tool_catalog() -> Vec<ToolInfo> {
         t("compile_full", "清理后完整编译", "编译", "build"),
         t("cancel_compile", "取消进行中的编译", "编译", "build"),
         t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
+        t("register_project", "注册/导入项目：探测工程并生成 lifecycle.toml", "配置", "danger"),
+        t("configure_service", "改写服务的启动命令/就绪端口/正则/三档编译", "配置", "danger"),
+        t("list_groups", "列出服务分组与成员", "分组", "read"),
+        t("create_group", "新建服务分组", "分组", "control"),
+        t("update_group", "更新分组名称或成员", "分组", "control"),
+        t("delete_group", "删除服务分组", "分组", "control"),
+        t("start_group", "一键启动分组内全部服务", "分组", "control"),
+        t("stop_group", "一键停止分组内全部服务", "分组", "control"),
+        t("restart_group", "一键重启分组内全部服务", "分组", "control"),
     ]
 }
 
@@ -262,6 +280,21 @@ impl LifeCycleServer {
             "ts": lifecycle_core::process::now_ms(),
         });
         eprintln!("{trace}");
+        let (exit, output) = match &result {
+            Ok(v) => (0, serde_json::to_value(v).unwrap_or(Value::Null)),
+            Err(e) => (
+                1,
+                json!({"error": {"code": e.code(), "message": e.to_string()}}),
+            ),
+        };
+        self.ws.core.call_log().push(
+            "mcp",
+            tool,
+            started.elapsed().as_millis() as u64,
+            exit,
+            input,
+            output,
+        );
         match result {
             Ok(v) => Ok(Json(v)),
             Err(e) => Err(to_error_data(e)),
@@ -284,6 +317,68 @@ fn to_error_data(e: Error) -> ErrorData {
         e.to_string(),
         Some(json!({"error": {"code": code, "message": e.to_string(), "hint": hint}})),
     )
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RegisterProjectReq {
+    /// Absolute path of the project directory.
+    pub path: String,
+    /// Optional project name; defaults to the directory name.
+    pub name: Option<String>,
+    /// Optional readiness port override.
+    pub port: Option<u16>,
+    /// Optional start command override.
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CompileSpec {
+    pub command: String,
+    /// maven|gradle|typescript|cargo|go|generic
+    pub parser: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ConfigureServiceReq {
+    pub project: Option<String>,
+    #[serde(default = "default_profile")]
+    pub profile: String,
+    pub workdir: Option<String>,
+    pub env: Option<std::collections::BTreeMap<String, String>>,
+    pub start_command: Option<String>,
+    pub ready_pattern: Option<String>,
+    pub ready_port: Option<u16>,
+    pub ready_timeout_ms: Option<u64>,
+    pub compile_quick: Option<CompileSpec>,
+    pub compile_partial: Option<CompileSpec>,
+    pub compile_full: Option<CompileSpec>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GroupMemberReq {
+    pub project: String,
+    #[serde(default = "default_profile")]
+    pub profile: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateGroupReq {
+    pub name: String,
+    pub members: Vec<GroupMemberReq>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateGroupReq {
+    pub id: String,
+    pub name: Option<String>,
+    pub members: Option<Vec<GroupMemberReq>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GroupIdReq {
+    pub id: String,
+    #[serde(default = "default_true", rename = "waitForReady")]
+    pub wait_for_ready: bool,
 }
 
 #[tool_router(router = tool_router)]
@@ -535,6 +630,255 @@ impl LifeCycleServer {
             Ok(json!({"ok": true}))
         })
         .await
+    }
+
+    #[tool(description = "Register/import a project: detect the stack (Node/Rust/Maven), generate lifecycle.toml if missing, then hot-load it. Returns project name and config path.")]
+    async fn register_project(
+        &self,
+        Parameters(req): Parameters<RegisterProjectReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("register_project", input, async {
+            if !self.ws.any_allows("register_project") {
+                return Err(Error::NotFound("tool 'register_project' is not exposed".into()));
+            }
+            let root = std::fs::canonicalize(&req.path)
+                .map_err(|_| Error::Config(format!("directory not found: {}", req.path)))?;
+            if !root.is_dir() {
+                return Err(Error::Config(format!("not a directory: {}", root.display())));
+            }
+            let toml_path = root.join("lifecycle.toml");
+            let generated = !toml_path.exists();
+            if generated {
+                let detected = lifecycle_core::detect::detect(&root);
+                let name = req.name.clone().unwrap_or_else(|| {
+                    root.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "project".into())
+                });
+                let has_command = req
+                    .command
+                    .as_deref()
+                    .is_some_and(|c| !c.trim().is_empty())
+                    || !detected.start_command.is_empty();
+                if !has_command {
+                    return Err(Error::Config(
+                        "cannot detect a start command for this directory; provide 'command'".into(),
+                    ));
+                }
+                let content =
+                    lifecycle_core::detect::render_toml(&name, &detected, req.port, req.command.as_deref());
+                std::fs::write(&toml_path, content)?;
+            }
+            let project = self.ws.core.register(&toml_path)?;
+            Ok(json!({"project": project, "path": toml_path, "generated": generated}))
+        })
+        .await
+    }
+
+    #[tool(description = "Configure a service profile in lifecycle.toml: start command, readiness port/pattern/timeout, workdir, env and quick/partial/full compile commands. Other content and comments are preserved; config is reloaded hot.")]
+    async fn configure_service(
+        &self,
+        Parameters(req): Parameters<ConfigureServiceReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("configure_service", input, async {
+            let project = self.ws.core.resolve_project(&req.project)?;
+            self.check_expose(&project, "configure_service")?;
+            let engine = self.ws.core.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            let patch = lifecycle_core::config::ProfilePatch {
+                workdir: req.workdir.clone(),
+                env: req.env.clone(),
+                start_command: req.start_command.clone(),
+                ready_pattern: req.ready_pattern.clone(),
+                ready_port: req.ready_port,
+                ready_timeout_ms: req.ready_timeout_ms,
+                compile_quick: req.compile_quick.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
+                compile_partial: req.compile_partial.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
+                compile_full: req.compile_full.as_ref().map(|s| (s.command.clone(), s.parser.clone())),
+            };
+            lifecycle_core::config::update_profile(&path, &req.profile, &patch)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            self.ws.core.set_expose(&project, expose);
+            Ok(json!({"ok": true, "project": project, "profile": req.profile, "config_path": path}))
+        })
+        .await
+    }
+
+    #[tool(description = "List service groups with their members.")]
+    async fn list_groups(&self) -> Result<Json<Value>, ErrorData> {
+        self.traced("list_groups", json!({}), async {
+            if !self.ws.any_allows("list_groups") {
+                return Err(Error::NotFound("tool 'list_groups' is not exposed".into()));
+            }
+            Ok(serde_json::to_value(self.ws.core.groups().load()?)?)
+        })
+        .await
+    }
+
+    #[tool(description = "Create a service group from project/profile members.")]
+    async fn create_group(
+        &self,
+        Parameters(req): Parameters<CreateGroupReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("create_group", input, async {
+            if !self.ws.any_allows("create_group") {
+                return Err(Error::NotFound("tool 'create_group' is not exposed".into()));
+            }
+            let members: Vec<lifecycle_core::groups::GroupMember> = req
+                .members
+                .iter()
+                .map(|m| lifecycle_core::groups::GroupMember { project: m.project.clone(), profile: m.profile.clone() })
+                .collect();
+            lifecycle_core::groups::validate(&req.name, &members)?;
+            let group = lifecycle_core::groups::Group {
+                id: lifecycle_core::groups::new_id(),
+                name: req.name.clone(),
+                members,
+                created_at_ms: lifecycle_core::process::now_ms(),
+            };
+            let mut groups = self.ws.core.groups().load()?;
+            groups.push(group.clone());
+            self.ws.core.groups().save(&groups)?;
+            Ok(serde_json::to_value(group)?)
+        })
+        .await
+    }
+
+    #[tool(description = "Update a group's name and/or members.")]
+    async fn update_group(
+        &self,
+        Parameters(req): Parameters<UpdateGroupReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("update_group", input, async {
+            if !self.ws.any_allows("update_group") {
+                return Err(Error::NotFound("tool 'update_group' is not exposed".into()));
+            }
+            let mut groups = self.ws.core.groups().load()?;
+            let group = groups
+                .iter_mut()
+                .find(|g| g.id == req.id)
+                .ok_or_else(|| Error::NotFound(format!("group '{}'", req.id)))?;
+            if let Some(name) = &req.name {
+                group.name = name.clone();
+            }
+            if let Some(members) = &req.members {
+                group.members = members
+                    .iter()
+                    .map(|m| lifecycle_core::groups::GroupMember { project: m.project.clone(), profile: m.profile.clone() })
+                    .collect();
+            }
+            lifecycle_core::groups::validate(&group.name, &group.members)?;
+            let updated = group.clone();
+            self.ws.core.groups().save(&groups)?;
+            Ok(serde_json::to_value(updated)?)
+        })
+        .await
+    }
+
+    #[tool(description = "Delete a service group (does not stop its services).")]
+    async fn delete_group(
+        &self,
+        Parameters(req): Parameters<GroupIdReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("delete_group", input, async {
+            if !self.ws.any_allows("delete_group") {
+                return Err(Error::NotFound("tool 'delete_group' is not exposed".into()));
+            }
+            let mut groups = self.ws.core.groups().load()?;
+            let pos = groups
+                .iter()
+                .position(|g| g.id == req.id)
+                .ok_or_else(|| Error::NotFound(format!("group '{}'", req.id)))?;
+            let removed = groups.remove(pos);
+            self.ws.core.groups().save(&groups)?;
+            Ok(serde_json::to_value(removed)?)
+        })
+        .await
+    }
+
+    #[tool(description = "Start every service in a group; returns per-member results.")]
+    async fn start_group(
+        &self,
+        Parameters(req): Parameters<GroupIdReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("start_group", input, async {
+            self.run_group(&req.id, "start", req.wait_for_ready).await
+        })
+        .await
+    }
+
+    #[tool(description = "Stop every service in a group; returns per-member results.")]
+    async fn stop_group(
+        &self,
+        Parameters(req): Parameters<GroupIdReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("stop_group", input, async {
+            self.run_group(&req.id, "stop", false).await
+        })
+        .await
+    }
+
+    #[tool(description = "Restart every service in a group; returns per-member results.")]
+    async fn restart_group(
+        &self,
+        Parameters(req): Parameters<GroupIdReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("restart_group", input, async {
+            self.run_group(&req.id, "restart", req.wait_for_ready).await
+        })
+        .await
+    }
+}
+
+impl LifeCycleServer {
+    async fn run_group(&self, id: &str, op: &str, wait: bool) -> lifecycle_core::Result<Value> {
+        if !self.ws.any_allows(&format!("{op}_group")) {
+            return Err(Error::NotFound(format!("tool '{op}_group' is not exposed")));
+        }
+        let groups = self.ws.core.groups().load()?;
+        let group = groups
+            .iter()
+            .find(|g| g.id == id)
+            .ok_or_else(|| Error::NotFound(format!("group '{id}'")))?;
+        let mut results = Vec::new();
+        for m in &group.members {
+            let outcome: lifecycle_core::Result<String> = async {
+                let engine = self.ws.core.engine(&m.project)?;
+                let mut guard = engine.lock().await;
+                match op {
+                    "start" => Ok(format!(
+                        "{:?}",
+                        guard.start_with_timeout(&m.profile, wait, None).await?.state
+                    )),
+                    "stop" => Ok(format!(
+                        "{:?}",
+                        guard.stop_with_timeout(&m.profile, None).await?.state
+                    )),
+                    _ => {
+                        guard.stop(&m.profile).await?;
+                        Ok(format!("{:?}", guard.start(&m.profile, wait).await?.state))
+                    }
+                }
+            }
+            .await;
+            match outcome {
+                Ok(state) => results.push(json!({"project": m.project, "profile": m.profile, "ok": true, "state": state})),
+                Err(e) => results.push(json!({"project": m.project, "profile": m.profile, "ok": false, "error": e.to_string()})),
+            }
+        }
+        Ok(json!({"group": group.name, "results": results}))
     }
 }
 

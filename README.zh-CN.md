@@ -88,6 +88,8 @@
 -  按项目 `[mcp].expose` 白名单控制 AI 可见工具；`reload_config` 默认不暴露。
 -  一键生成 / 写入 Claude Desktop、Cursor、VS Code、Codex CLI、Gemini CLI 的接入配置（保留原有内容、自动备份、可撤销）。
 -  控制台内真实 MCP 握手"测试连接"，直接列出 AI 此刻能看到的工具。
+-  AI 可通过 MCP 创建/配置项目与服务（启动命令、编译命令、端口），并控制服务分组。
+-  每次 UI 与 MCP 工具调用都记录**请求与响应**，点开任意记录即可查看发送了什么、回复了 AI 什么。
 
 ---
 
@@ -243,14 +245,14 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 
 | 区域 | 内容 |
 | --- | --- |
-| 侧栏 | 工作区：全部服务 / 服务分组 / MCP 配置；全局：全局设置 / 诊断；Projects 树（可折叠、按项目筛选）+ 搜索；底部语言切换（中文 / EN）与主题切换（亮 / 暗 / 自动）、后端在线状态 |
+| 侧栏 | 三个入口：服务 / 分组 / MCP；底部一个设置按钮、一个主题循环按钮（亮 → 暗 → 跟随系统）与收缩控件（收为图标栏）；语言切换放在设置中 |
 | 服务列表 | 顶部统计卡（运行中 / 启停中 / 崩溃 / 未启动 / 编译失败，点击即筛选）；表格吸顶表头、列排序、全选/半选、批量启停；行点击进详情 |
 | 详情 | 状态卡 + 启动/快速启动/停止/重启 + 快速/部分/完整编译（编译中可取消）；页签仅含服务级内容：日志 / 错误 / 配置 |
 | 日志 | 启动日志 / 编译日志切换；级别 + 正则过滤；搜索 + Enter/Shift+Enter 跳转；自动滚动；清屏；打开日志文件 |
 | 错误 | 结构化诊断列表，点击跳编辑器行列；原始输出兜底展示 |
 | 配置 | 展示 lifecycle.toml 全文，一键在编辑器打开 / 复制 |
 | 全局设置 | 主题、系统通知开关、编辑器跳转命令（含 VS Code/Cursor/IntelliJ/Vim 预设）、日志缓冲与超时；脏标记保存栏 |
-| 诊断 | 全局最近 200 次工具调用（UI 与 MCP 共用）：成功率/平均/最慢统计、按工具与结果筛选、耗时条形、实时刷新开关 |
+| MCP → 调用记录 | 全局最近 200 次工具调用（UI 与 MCP 共用）：成功率/平均/MCP 数统计、按来源与结果筛选、耗时条形、实时刷新；点击行打开详情弹窗，含完整请求/响应 JSON（可复制） |
 
 快捷键：`/` 聚焦搜索，`n` 新建服务，`Esc` 关闭弹窗，日志搜索框 `Enter` / `Shift+Enter` 上下匹配。
 筛选、排序、搜索与部分编译目标都会本地记住。
@@ -264,7 +266,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 - **stdio**：客户端拉起本地进程。可执行文件优先用同目录的 `lifecycle-mcp`；打包后的桌面 App 自身支持 `--mcp-stdio`，无需额外二进制。
 - **Streamable HTTP**：`http://127.0.0.1:39517/mcp`（仅监听回环），复用常驻后端。
 
-### 工具（12）
+### 工具（20）
 
 | 工具 | 作用 | 风险 |
 | --- | --- | --- |
@@ -278,6 +280,10 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | `compile_quick` / `compile_partial` / `compile_full` | 三档编译，返回结构化结果 | 编译 |
 | `cancel_compile` | 取消进行中的编译 | 编译 |
 | `reload_config` | 重载 lifecycle.toml | 高危，**默认不暴露** |
+| `register_project` | 注册/导入项目：探测工程、生成 lifecycle.toml、热加载 | 配置 |
+| `configure_service` | 改写 profile 的启动命令/就绪端口/正则/超时/workdir/env/三档编译 | 配置 |
+| `list_groups` / `create_group` / `update_group` / `delete_group` | 管理服务分组 | 只读 / 控制 |
+| `start_group` / `stop_group` / `restart_group` | 分组一键启停/重启，逐成员返回结果 | 控制 |
 
 ### 白名单
 
@@ -341,7 +347,7 @@ stdio 片段会注入当前 `PATH`，保证从 GUI 客户端拉起时能找到 n
 | GET | `…/logs`、`…/logs/stream` | 日志分页 / SSE 实时流 |
 | GET | `/api/events` | 全局状态 SSE |
 | GET/PUT | `/api/settings` | 设置（含 theme） |
-| GET | `/api/diagnostics` | 最近工具调用 |
+| GET | `/api/diagnostics` | 最近工具调用（含请求/响应 payload） |
 | POST | `/api/open-editor`、`/api/reveal-log` | 跳编辑器 / 定位日志文件 |
 | POST | `/api/open-url` | 打开日志中的 http(s) 链接（校验 scheme、单 argv、拒绝注入） |
 | GET/POST | `/api/groups` | 分组列表 / 新建 |
@@ -413,6 +419,7 @@ cargo test --workspace          # 单元 + 集成测试
 cargo clippy --workspace --all-targets
 bash scripts/fixtures-e2e.sh    # java/node/rust/simple 四个 fixture 端到端
 node scripts/mcp-e2e.mjs        # MCP stdio 全工具端到端
+node scripts/mcp-admin-e2e.mjs  # MCP 注册/配置/分组工具端到端
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 
@@ -433,6 +440,8 @@ cargo build --release -p lifecycle-app --features custom-protocol
 
 **必须带 `--features custom-protocol`**：否则 Tauri 走 `devUrl:5173`，打包产物会连到开发服务器而不是内嵌前端。
 若改了 `ui/dist` 但产物没更新，先 `touch crates/lifecycle-app/tauri.conf.json crates/lifecycle-app/build.rs` 再构建（cargo 缓存不会自动重嵌前端）。
+
+应用图标与 `docs/logo.svg`、侧边栏 logo 同源：`node scripts/gen-icons.mjs`（QuickLook + sips + iconutil）。
 
 产物：`target/release/bundle/` 下的 `.app` / `.dmg`（macOS）或对应平台安装包。
 打包后的 App 二进制自带 `--mcp-stdio`，可直接作为 Claude/Cursor 的 stdio 命令。

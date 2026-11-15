@@ -1,6 +1,7 @@
 pub mod compile;
 pub mod config;
 pub mod detect;
+pub mod diagnostics;
 pub mod engine;
 pub mod error;
 pub mod groups;

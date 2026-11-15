@@ -10,7 +10,6 @@ import ErrorsPanel from "./lib/ErrorsPanel.jsx";
 import PartialModal from "./lib/PartialModal.jsx";
 import SettingsPanel from "./lib/SettingsPanel.jsx";
 import ConfigPanel from "./lib/ConfigPanel.jsx";
-import DiagnosticsPanel from "./lib/DiagnosticsPanel.jsx";
 import ServicesView from "./lib/ServicesView.jsx";
 import GroupsView from "./lib/GroupsView.jsx";
 import McpView from "./lib/McpView.jsx";
@@ -40,6 +39,21 @@ export default function App() {
   const [registerKind, setRegisterKind] = useState("project");
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
   const [online, setOnline] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("lifecycle-sidebar-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("lifecycle-sidebar-collapsed", collapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [collapsed]);
 
   const prevStates = useRef({});
   const selRef = useRef(sel);
@@ -208,23 +222,11 @@ export default function App() {
     <div className="flex h-full">
       <Sidebar
         projects={projects}
-        sel={sel}
         view={view}
-        selectedProject={selectedProject}
         online={online}
-        onSelect={openDetail}
-        onSelectProject={(p) => {
-          setSelectedProject(p);
-          setView("services");
-        }}
-        onNavigate={(v) => {
-          setView(v);
-          if (v !== "services") setSelectedProject(null);
-        }}
-        onOpenAddProject={() => {
-          setRegisterKind("project");
-          setShowRegister(true);
-        }}
+        collapsed={collapsed}
+        onToggleCollapsed={() => setCollapsed((c) => !c)}
+        onNavigate={(v) => setView(v)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -245,8 +247,6 @@ export default function App() {
           <McpView />
         ) : view === "settings" ? (
           <SettingsPanel />
-        ) : view === "diagnostics" ? (
-          <DiagnosticsPanel />
         ) : current ? (
           <>
             <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-4">

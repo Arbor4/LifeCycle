@@ -89,6 +89,8 @@ Start / stop / restart, three compile granularities (quick / partial / full), st
 - Per-project `[mcp].expose` whitelist controls what AI can see; `reload_config` is hidden by default.
 - One-click generation / writing of client configs for Claude Desktop, Cursor, VS Code, Codex CLI and Gemini CLI (merge-preserving, auto-backup, undoable).
 - A real in-console MCP handshake ("Test connection") lists exactly the tools AI can see right now.
+- AI can create/configure projects and services (start command, compile commands, port) and control service groups via MCP.
+- Every UI & MCP tool call is recorded with its **request and response**; open any record to inspect what was sent and what AI received.
 
 ---
 
@@ -246,14 +248,14 @@ The **Groups** page batches any number of `project/profile` pairs (e.g. "backend
 
 | Area | Contents |
 | --- | --- |
-| Sidebar | Workspace: All services / Groups / MCP. Global: Global settings / Diagnostics. Collapsible Projects tree with per-project filtering + search. Footer: language switch (中文 / EN), theme switch (light / dark / system), backend online status |
+| Sidebar | Three entries: Services / Groups / MCP. Footer: a Settings button, a single theme-cycle button (light → dark → system) and a collapse control that shrinks the sidebar to an icon rail. Language lives in Settings |
 | Services | Stat tiles (running / starting-stopping / crashed / idle / build failed — click to filter); sticky header, sortable columns, select-all with indeterminate state, bulk start/stop; row click opens detail |
 | Detail | Status card + start / fast-start / stop / restart + quick / partial / full compile (cancellable while running); tabs are service-scoped only: Logs / Errors / Config |
 | Logs | Run-log / build-log toggle; level + regex filters; search with Enter / Shift+Enter jump; auto-scroll; clear; open log file; color toggle |
 | Errors | Structured diagnostics, click to jump to editor line/col; raw output as fallback |
 | Config | Full lifecycle.toml with open-in-editor / copy |
 | Global settings | Language, theme, notification switch, editor jump command (VS Code/Cursor/IntelliJ/Vim presets), log buffer & timeouts; dirty-state save bar |
-| Diagnostics | Global last-200 tool calls (shared by UI & MCP): success-rate / avg / slowest stats, filter by tool and result, duration bars, live-refresh toggle |
+| MCP → Call log | Global last-200 tool calls (shared by UI & MCP): success-rate / avg / MCP-count stats, filter by source and result, duration bars, live-refresh toggle; clicking a row opens a detail dialog with the full request & response JSON (copyable) |
 
 Shortcuts: `/` focus search, `n` add project, `Esc` close dialogs, `Enter` / `Shift+Enter` next/previous log match.
 Filters, sorting, search and partial-compile targets are remembered locally.
@@ -267,7 +269,7 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 - **stdio**: the client spawns a local process. Prefers a sibling `lifecycle-mcp` binary; the packaged desktop app itself supports `--mcp-stdio`, so no extra binary is needed.
 - **Streamable HTTP**: `http://127.0.0.1:39517/mcp` (loopback only), reusing the running backend.
 
-### Tools (12)
+### Tools (20)
 
 | Tool | Purpose | Risk |
 | --- | --- | --- |
@@ -281,6 +283,10 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 | `compile_quick` / `compile_partial` / `compile_full` | Three compile granularities, structured results | build |
 | `cancel_compile` | Cancel an in-progress compile | build |
 | `reload_config` | Reload lifecycle.toml | danger, **hidden by default** |
+| `register_project` | Register/import a project: detect stack, generate lifecycle.toml, hot-load | config |
+| `configure_service` | Rewrite a profile's start command, ready port/pattern/timeout, workdir, env, quick/partial/full compile | config |
+| `list_groups` / `create_group` / `update_group` / `delete_group` | Manage service groups | read / control |
+| `start_group` / `stop_group` / `restart_group` | One-click batch lifecycle for a group, per-member results | control |
 
 ### Whitelist
 
@@ -346,7 +352,7 @@ Default `http://127.0.0.1:39517`.
 | GET | `…/logs`, `…/logs/stream` | Log page / SSE live stream |
 | GET | `/api/events` | Global state SSE |
 | GET/PUT | `/api/settings` | Settings (theme, language, …) |
-| GET | `/api/diagnostics` | Recent tool calls |
+| GET | `/api/diagnostics` | Recent tool calls with request/response payloads |
 | POST | `/api/open-editor`, `/api/reveal-log` | Jump to editor / reveal log file |
 | POST | `/api/open-url` | Open an http(s) link from logs (scheme-validated, single argv, injection-rejecting) |
 | GET/POST | `/api/groups` | List / create groups |
@@ -418,6 +424,7 @@ cargo test --workspace          # unit + integration tests
 cargo clippy --workspace --all-targets
 bash scripts/fixtures-e2e.sh    # java/node/rust/simple fixtures end-to-end
 node scripts/mcp-e2e.mjs        # MCP stdio all-tools end-to-end
+node scripts/mcp-admin-e2e.mjs  # MCP register/configure/group tools end-to-end
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 
@@ -438,6 +445,8 @@ cargo build --release -p lifecycle-app --features custom-protocol
 
 **`--features custom-protocol` is required**: otherwise Tauri uses `devUrl:5173` and the bundle would talk to a dev server instead of the embedded frontend.
 If you changed `ui/dist` but the bundle didn't update, `touch crates/lifecycle-app/tauri.conf.json crates/lifecycle-app/build.rs` first (cargo does not re-embed the frontend automatically).
+
+App icons are generated from the same mark as `docs/logo.svg` and the sidebar logo: `node scripts/gen-icons.mjs` (QuickLook + sips + iconutil).
 
 Artifacts: `.app` / `.dmg` under `target/release/bundle/` (macOS) or the platform installer.
 The packaged app binary supports `--mcp-stdio`, so it can be used directly as the stdio command for Claude/Cursor.

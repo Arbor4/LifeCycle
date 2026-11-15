@@ -191,6 +191,99 @@ impl Config {
     }
 }
 
+/// Partial update of one profile inside lifecycle.toml, preserving everything
+/// else (other profiles, comments, formatting). Creates the profile if absent.
+#[derive(Debug, Default, Clone)]
+pub struct ProfilePatch {
+    pub workdir: Option<String>,
+    pub env: Option<BTreeMap<String, String>>,
+    pub start_command: Option<String>,
+    pub ready_pattern: Option<String>,
+    pub ready_port: Option<u16>,
+    pub ready_timeout_ms: Option<u64>,
+    /// (command, parser)
+    pub compile_quick: Option<(String, Option<String>)>,
+    pub compile_partial: Option<(String, Option<String>)>,
+    pub compile_full: Option<(String, Option<String>)>,
+}
+
+fn ensure_table<'a>(doc: &'a mut toml_edit::DocumentMut, keys: &[&str]) -> &'a mut toml_edit::Table {
+    let mut item = doc.as_item_mut();
+    for key in keys {
+        let table = item
+            .as_table_mut()
+            .expect("parent must be a table");
+        table.set_implicit(true);
+        item = table
+            .entry(key)
+            .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    item.as_table_mut().expect("leaf must be a table")
+}
+
+pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Result<()> {
+    if profile.trim().is_empty() {
+        return Err(Error::Config("profile name must not be empty".into()));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+
+    let base = ["profiles", profile];
+    if let Some(w) = &patch.workdir {
+        ensure_table(&mut doc, &base)["workdir"] = toml_edit::value(w.as_str());
+    }
+    if let Some(env) = &patch.env {
+        let mut t = toml_edit::Table::new();
+        for (k, v) in env {
+            t[k] = toml_edit::value(v.as_str());
+        }
+        ensure_table(&mut doc, &base)["env"] = toml_edit::Item::Table(t);
+    }
+    if let Some(cmd) = &patch.start_command {
+        ensure_table(&mut doc, &["profiles", profile, "start"])["command"] =
+            toml_edit::value(cmd.as_str());
+    }
+    if let Some(p) = &patch.ready_pattern {
+        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_pattern"] =
+            toml_edit::value(p.as_str());
+    }
+    if let Some(p) = patch.ready_port {
+        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_port"] =
+            toml_edit::value(p as i64);
+    }
+    if let Some(ms) = patch.ready_timeout_ms {
+        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_timeout_ms"] =
+            toml_edit::value(ms as i64);
+    }
+    for (kind, spec) in [
+        ("quick", &patch.compile_quick),
+        ("partial", &patch.compile_partial),
+        ("full", &patch.compile_full),
+    ] {
+        if let Some((cmd, parser)) = spec {
+            let t = ensure_table(&mut doc, &["profiles", profile, "compile", kind]);
+            t["command"] = toml_edit::value(cmd.as_str());
+            if let Some(p) = parser {
+                t["parser"] = toml_edit::value(p.as_str());
+            }
+        }
+    }
+
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Rewrite only the `[mcp]` table of a lifecycle.toml, keeping every other
 /// section, comment and formatting untouched.
 pub fn update_mcp_section(path: &Path, transport: &str, expose: &[String]) -> Result<()> {

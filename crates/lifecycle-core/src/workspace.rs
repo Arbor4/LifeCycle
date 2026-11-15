@@ -4,8 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::Mutex as AsyncMutex;
 
+use crate::diagnostics::CallLog;
 use crate::engine::Engine;
 use crate::error::{Error, Result};
+use crate::groups::{new_id, Group, GroupMember, GroupStore};
 use crate::registry::Registry;
 
 /// Multi-project holder shared by MCP, HTTP and the desktop app.
@@ -16,6 +18,15 @@ pub struct Workspace {
     expose: Mutex<HashMap<String, Vec<String>>>,
     paths: Mutex<HashMap<String, PathBuf>>,
     registry: Registry,
+    groups: GroupStore,
+    call_log: Arc<CallLog>,
+}
+
+fn home() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn canonical(path: &Path) -> PathBuf {
@@ -39,11 +50,14 @@ impl Workspace {
         if with_registry {
             let _ = registry.prune();
         }
+        let groups = GroupStore::new(home().join(".lifecycle").join("groups.json"));
         let ws = Self {
             engines: Mutex::new(HashMap::new()),
             expose: Mutex::new(HashMap::new()),
             paths: Mutex::new(HashMap::new()),
             registry,
+            groups,
+            call_log: Arc::new(CallLog::new()),
         };
         let mut loaded: HashSet<PathBuf> = HashSet::new();
         for path in config_paths {
@@ -59,11 +73,47 @@ impl Workspace {
                     Ok(_) => {
                         loaded.insert(canonical(&path));
                     }
-                    Err(e) => eprintln!("lifecycle: 跳过已注册项目 {}: {e}", path.display()),
+                    Err(e) => eprintln!("lifecycle: skip registered project {}: {e}", path.display()),
                 }
             }
+            ws.seed_groups();
         }
         Ok(ws)
+    }
+
+    /// First-run convenience: group the first profile of up to three projects.
+    fn seed_groups(&self) {
+        if self.groups.path().exists() {
+            return;
+        }
+        let members: Vec<GroupMember> = self
+            .names()
+            .into_iter()
+            .take(3)
+            .filter_map(|name| {
+                let engine = self.engine(&name).ok()?;
+                let guard = engine.try_lock().ok()?;
+                let profile = guard.list().ok()?.first()?.profile.clone();
+                Some(GroupMember { project: name, profile })
+            })
+            .collect();
+        if !members.is_empty() {
+            let seed = vec![Group {
+                id: new_id(),
+                name: "示例分组".into(),
+                members,
+                created_at_ms: crate::process::now_ms(),
+            }];
+            let _ = self.groups.save(&seed);
+        }
+    }
+
+    pub fn groups(&self) -> &GroupStore {
+        &self.groups
+    }
+
+    pub fn call_log(&self) -> &Arc<CallLog> {
+        &self.call_log
     }
 
     /// Register a project from its lifecycle.toml at runtime (in-memory only).

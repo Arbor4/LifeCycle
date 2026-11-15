@@ -7,8 +7,9 @@ import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
 import Segmented from "./Segmented.jsx";
+import CallRecords from "./CallRecords.jsx";
 
-const GROUP_ICON = { 查询: "eye", 进程: "play", 编译: "compile", 配置: "settings" };
+const GROUP_ICON = { 查询: "eye", 进程: "play", 编译: "compile", 配置: "settings", 分组: "group" };
 const TONE_OF = { read: "blu", control: "grn", build: "amb", danger: "red" };
 
 function matches(expose, tool) {
@@ -32,6 +33,7 @@ export default function McpView() {
   const [busyClient, setBusyClient] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [copied, setCopied] = useState(null);
+  const [tab, setTab] = useState("config");
 
   const toolSummary = (tool) => (lang === "zh" ? tool.summary : t(`tool.${tool.name}`));
   const presetName = (p) => (lang === "zh" ? p.name : t(`preset.${p.id}`));
@@ -216,13 +218,37 @@ export default function McpView() {
         )}
       </div>
 
+      <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-4">
+        {[
+          ["config", t("工具白名单"), "shield"],
+          ["calls", t("调用记录"), "diag"],
+        ].map(([id, label, icon]) => (
+          <button
+            key={id}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+              tab === id
+                ? "border-b-2 border-[var(--cyn)] font-medium text-[var(--cyn)]"
+                : "text-[var(--mut)] hover:text-[var(--txt)]"
+            }`}
+            onClick={() => setTab(id)}
+          >
+            <Icon name={icon} size={13} />
+            {label}
+          </button>
+        ))}
+        <span className="flex-1" />
+        <span className="text-[11px] text-[var(--dim)]">{t("UI 与 MCP 的每次工具调用，含请求与响应")}</span>
+      </div>
+
       {loadError && (
         <div className="m-4 rounded-lg border border-[var(--red)] bg-[var(--red-soft)] px-3 py-2 text-sm text-[var(--red)]">
           {t("无法读取 MCP 配置：{err}", { err: loadError })}
         </div>
       )}
 
-      {info ? (
+      {tab === "calls" ? (
+        <CallRecords />
+      ) : info ? (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
