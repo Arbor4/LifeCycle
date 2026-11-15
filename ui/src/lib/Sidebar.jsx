@@ -302,7 +302,7 @@ export default function Sidebar({
           options={[
             { value: "light", label: t("亮色"), icon: "sun", title: t("亮色主题") },
             { value: "dark", label: t("暗色"), icon: "moon", title: t("暗色主题") },
-            { value: "system", label: t("跟随系统"), icon: "monitor", title: t("跟随系统") },
+            { value: "system", label: t("自动"), icon: "monitor", title: t("跟随系统") },
           ]}
         />
       </div>

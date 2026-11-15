@@ -571,6 +571,7 @@ input[type="checkbox"]:not(.cb-input) {
   color: var(--mut);
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background 0.15s,
     color 0.15s;
