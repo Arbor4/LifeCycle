@@ -115,7 +115,7 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
         </span>
       </div>
 
-      <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--mut)]">
+      <div className="mt-1.5 hidden flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--mut)] sm:flex">
         <span>
           PID <span className="mono text-[var(--txt)]">{status.pid ?? "—"}</span>
         </span>
@@ -162,7 +162,7 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
       </div>
 
       {status.command && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <div className="mt-2 hidden flex-wrap items-center gap-2 text-xs md:flex">
           <div className="mono truncate text-[var(--dim)] bg-[var(--bg2)]/60 border border-[var(--line)] rounded px-2 py-0.5 max-w-xl">
             $ {status.command}
           </div>

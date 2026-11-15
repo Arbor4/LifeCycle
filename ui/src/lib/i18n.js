@@ -443,6 +443,8 @@ const EN = {
   "环境: {env}": "Environment: {env}",
   打开导航: "Open navigation",
   批量操作: "Bulk actions",
+  更多日志控制: "More log controls",
+  "当前状态: {state}": "Current state: {state}",
   状态概览: "Status overview",
   折叠概览: "Collapse overview",
   展开概览: "Expand overview",

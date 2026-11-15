@@ -39,6 +39,26 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
   const [showClear, setShowClear] = useState(false);
   const [clearScope, setClearScope] = useState("current");
   const [clearing, setClearing] = useState(false);
+  const [showLogMenu, setShowLogMenu] = useState(false);
+  const logMenuRef = useRef(null);
+  const logMenuBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (!showLogMenu) return;
+    const onDown = (e) => {
+      if (logMenuRef.current?.contains(e.target) || logMenuBtnRef.current?.contains(e.target)) return;
+      setShowLogMenu(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowLogMenu(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showLogMenu]);
   const container = useRef(null);
   const autoRef = useRef(autoScroll);
   autoRef.current = autoScroll;
@@ -185,14 +205,24 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
     }
   }
 
+  async function copyVisible() {
+    if (!visible.length) return;
+    const ok = await copyText(visible.map((l) => l.text).join("\n"));
+    if (ok) pushToast(t("已复制 {n} 行日志", { n: visible.length }), { kind: "success" });
+  }
+
+  function openLogFile() {
+    api("/api/reveal-log", { method: "POST", body: JSON.stringify({ project, profile, source }) }).catch(() => {});
+  }
+
   const sourceBtn = (active) =>
-    `flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all ${
+    `flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all sm:px-3 ${
       active ? "bg-[var(--bg1)] text-[var(--txt)] shadow-sm font-semibold" : "text-[var(--mut)] hover:text-[var(--txt)]"
     }`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-2 text-sm">
+      <div className="relative flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-1.5 text-sm sm:gap-2 sm:px-3 sm:py-2">
         <div className="flex items-center rounded-lg bg-[var(--bg2)] p-0.5 border border-[var(--line)]">
           <button
             type="button"
@@ -201,7 +231,7 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
             title={t("查看服务启动/运行控制台输出（一键切换）")}
           >
             <Icon name="play" size={11} className={source === "run" ? "text-[var(--grn)]" : ""} />
-            {t("启动日志")}
+            <span className="hidden sm:inline">{t("启动日志")}</span>
           </button>
           <button
             type="button"
@@ -210,26 +240,28 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
             title={t("查看构建与编译输出（一键切换）")}
           >
             <Icon name="compile" size={11} className={source === "build" ? "text-[var(--vio)]" : ""} />
-            {t("编译日志")}
+            <span className="hidden sm:inline">{t("编译日志")}</span>
           </button>
         </div>
-        <select className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
+        <select className="input flex-none" value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="all">{t("全部级别")}</option>
           <option value="error">ERROR</option>
           <option value="warn">WARN</option>
           <option value="info">INFO</option>
         </select>
-        <input
-          className={`input w-40 ${regexText && !regexRe ? "!border-[var(--red)]" : ""}`}
-          placeholder={t("正则过滤…")}
-          value={regexText}
-          onChange={(e) => setRegexText(e.target.value)}
-        />
-        <span className="mx-1 border-l border-[var(--line2)]" />
-        <div className="relative">
+        <div className="hidden md:block">
+          <input
+            className={`input w-40 ${regexText && !regexRe ? "!border-[var(--red)]" : ""}`}
+            placeholder={t("正则过滤…")}
+            value={regexText}
+            onChange={(e) => setRegexText(e.target.value)}
+          />
+        </div>
+        <span className="mx-1 hidden border-l border-[var(--line2)] md:block" />
+        <div className="relative min-w-0 flex-1 sm:flex-none">
           <Icon name="search" size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
-            className="input w-36 pl-7! pr-6!"
+            className="input w-full pl-7! pr-6! sm:w-36"
             placeholder={t("搜索…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -248,13 +280,13 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
             </button>
           )}
         </div>
-        <button className="btn btn-sm" onClick={() => gotoMatch(-1)} title={t("上一个匹配 (Shift+Enter)")}>
+        <button className="btn btn-sm hidden sm:inline-flex" onClick={() => gotoMatch(-1)} title={t("上一个匹配 (Shift+Enter)")}>
           <Icon name="up" size={12} />
         </button>
-        <button className="btn btn-sm" onClick={() => gotoMatch(1)} title={t("下一个匹配 (Enter)")}>
+        <button className="btn btn-sm hidden sm:inline-flex" onClick={() => gotoMatch(1)} title={t("下一个匹配 (Enter)")}>
           <Icon name="down" size={12} />
         </button>
-        <span className="mono text-xs text-[var(--dim)]">
+        <span className="mono hidden text-xs text-[var(--dim)] sm:inline">
           {matches.length ? `${matchPos + 1}/${matches.length}` : t("{n} 行", { n: visible.length })}
         </span>
         <span className="flex-1" />
@@ -264,16 +296,24 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           checked={colorOn}
           onChange={setColorOn}
           label={t("颜色")}
+          labelClassName="hidden sm:inline"
+          className="flex-none"
           title={t("解析 ANSI 终端色与 Spring/Vite 风格语义高亮；子进程需重启后才会输出 ANSI（[logs].color）")}
         />
-        <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label={t("自动滚动")} />
+        <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label={t("自动滚动")} labelClassName="hidden sm:inline" className="flex-none" />
         <button
-          className="btn btn-sm"
-          onClick={async () => {
-            if (!visible.length) return;
-            const ok = await copyText(visible.map((l) => l.text).join("\n"));
-            if (ok) pushToast(t("已复制 {n} 行日志", { n: visible.length }), { kind: "success" });
-          }}
+          ref={logMenuBtnRef}
+          type="button"
+          className="btn btn-sm sm:hidden"
+          onClick={() => setShowLogMenu((v) => !v)}
+          title={t("更多日志控制")}
+          aria-expanded={showLogMenu}
+        >
+          <Icon name="settings" size={12} />
+        </button>
+        <button
+          className="btn btn-sm hidden sm:inline-flex"
+          onClick={copyVisible}
           disabled={!visible.length}
           title={t("复制当前过滤出的日志内容")}
         >
@@ -281,7 +321,7 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           {t("复制")}
         </button>
         <button
-          className="btn btn-sm"
+          className="btn btn-sm hidden sm:inline-flex"
           onClick={() => setLines([])}
           title={t("仅清空当前显示，不删除日志数据")}
         >
@@ -289,7 +329,7 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           {t("清屏")}
         </button>
         <button
-          className="btn btn-sm btn-danger"
+          className="btn btn-sm btn-danger hidden sm:inline-flex"
           onClick={() => {
             setClearScope("current");
             setShowClear(true);
@@ -300,14 +340,72 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           {t("清空日志")}
         </button>
         <button
-          className="btn btn-sm"
-          onClick={() =>
-            api("/api/reveal-log", { method: "POST", body: JSON.stringify({ project, profile, source }) }).catch(() => {})
-          }
+          className="btn btn-sm hidden sm:inline-flex"
+          onClick={openLogFile}
         >
           <Icon name="open" size={12} />
           {t("打开日志文件")}
         </button>
+
+        {showLogMenu && (
+          <div
+            ref={logMenuRef}
+            className="absolute right-2 top-full z-40 mt-1 flex w-64 flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg1)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.4)] sm:hidden"
+          >
+            <input
+              className={`input w-full ${regexText && !regexRe ? "!border-[var(--red)]" : ""}`}
+              placeholder={t("正则过滤…")}
+              value={regexText}
+              onChange={(e) => setRegexText(e.target.value)}
+            />
+            <div className="flex items-center gap-1.5">
+              <button className="btn btn-sm" onClick={() => gotoMatch(-1)} title={t("上一个匹配 (Shift+Enter)")}>
+                <Icon name="up" size={12} />
+              </button>
+              <button className="btn btn-sm" onClick={() => gotoMatch(1)} title={t("下一个匹配 (Enter)")}>
+                <Icon name="down" size={12} />
+              </button>
+              <span className="mono text-xs text-[var(--dim)]">
+                {matches.length ? `${matchPos + 1}/${matches.length}` : t("{n} 行", { n: visible.length })}
+              </span>
+            </div>
+            <button className="btn btn-sm justify-start" onClick={copyVisible} disabled={!visible.length}>
+              <Icon name="copy" size={12} />
+              {t("复制")}
+            </button>
+            <button
+              className="btn btn-sm justify-start"
+              onClick={() => {
+                setLines([]);
+                setShowLogMenu(false);
+              }}
+            >
+              <Icon name="x" size={12} />
+              {t("清屏")}
+            </button>
+            <button
+              className="btn btn-sm btn-danger justify-start"
+              onClick={() => {
+                setClearScope("current");
+                setShowClear(true);
+                setShowLogMenu(false);
+              }}
+            >
+              <Icon name="trash" size={12} />
+              {t("清空日志")}
+            </button>
+            <button
+              className="btn btn-sm justify-start"
+              onClick={() => {
+                openLogFile();
+                setShowLogMenu(false);
+              }}
+            >
+              <Icon name="open" size={12} />
+              {t("打开日志文件")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div

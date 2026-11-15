@@ -613,7 +613,7 @@ export default function ServicesView({
               </th>
               {thSort("name", t("服务名称"))}
               <th className="hidden lg:table-cell">{t("环境 / Profile")}</th>
-              {thSort("state", t("状态"))}
+              {thSort("state", t("状态"), "hidden sm:table-cell")}
               <th className="hidden lg:table-cell">PID</th>
               {thSort("uptime", t("运行时长"), "hidden md:table-cell")}
               {thSort("port", t("端口"), "hidden sm:table-cell")}
@@ -689,7 +689,7 @@ export default function ServicesView({
                       </select>
                     </div>
                   </td>
-                  <td>
+                  <td className="hidden sm:table-cell">
                     <span className="inline-flex items-center gap-2 whitespace-nowrap">
                       <span className={`dot dot-${r.state}`} />
                       <span
@@ -734,6 +734,15 @@ export default function ServicesView({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex justify-end items-center gap-1.5 py-0.5 pr-1">
+                      <span
+                        className={`inline-flex sm:hidden items-center gap-1 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--bg2)] px-1.5 py-0.5 text-[10px] font-medium ${
+                          r.state === "crashed" ? "text-[var(--red)]" : r.state === "running" ? "text-[var(--grn)]" : r.state === "starting" || r.state === "stopping" ? "text-[var(--amb)]" : "text-[var(--mut)]"
+                        }`}
+                        title={t("当前状态: {state}", { state: t(STATE_LABEL[r.state] ?? r.state) })}
+                      >
+                        <span className={`dot dot-${r.state}`} />
+                        {t(STATE_LABEL[r.state] ?? r.state)}
+                      </span>
                       {busy[r.key] && <span className="spinner self-center text-[var(--blu)]" />}
 
                       <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">

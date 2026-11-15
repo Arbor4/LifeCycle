@@ -235,6 +235,8 @@ html.theme-switching *::after {
   }
 }
 
+/* 组件类置于 components 层：hidden/flex 等 utilities 可正常覆盖 display/padding */
+@layer components {
 /* ── 按钮 ─────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
@@ -828,4 +830,5 @@ input[type="checkbox"]:not(.cb-input) {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
 }

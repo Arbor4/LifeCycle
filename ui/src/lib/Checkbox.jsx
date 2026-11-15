@@ -16,6 +16,7 @@ export default function Checkbox({
   label,
   title,
   className = "",
+  labelClassName = "",
   onChange,
   children,
 }) {
@@ -46,7 +47,7 @@ export default function Checkbox({
           <span className="cb-dash" />
         </span>
       </span>
-      {(children || label) && <span className="cb-label">{children ?? label}</span>}
+      {(children || label) && <span className={`cb-label ${labelClassName}`}>{children ?? label}</span>}
     </label>
   );
 }

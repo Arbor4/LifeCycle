@@ -336,14 +336,14 @@ export default function App() {
           <SettingsPanel />
         ) : current ? (
           <>
-            <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-4">
+            <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-2 sm:p-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between">
                 <StatusCard status={current} project={sel.project} onRefresh={refresh} onSelect={openDetail} />
 
                 {/* 运行与编译操作区分开展示 */}
-                <div className="flex flex-wrap items-center justify-end gap-3">
-                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                <div className="flex flex-wrap items-center justify-end gap-1 md:gap-3">
+                  <div className="flex items-center gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-1 py-0.5 md:gap-1.5 md:px-2 md:py-1">
+                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
                       {t("运行")}
                     </span>
                     <button
@@ -353,7 +353,7 @@ export default function App() {
                       title={t("启动服务并等待就绪检查")}
                     >
                       <Icon name="play" size={12} />
-                      {t("启动")}
+                      <span className="hidden md:inline">{t("启动")}</span>
                     </button>
                     <button
                       className="btn btn-ghost btn-sm"
@@ -362,7 +362,7 @@ export default function App() {
                       title={t("跳过等待就绪，直接拉起")}
                     >
                       <Icon name="zap" size={12} />
-                      {t("快速")}
+                      <span className="hidden md:inline">{t("快速")}</span>
                     </button>
                     <button
                       className="btn btn-danger btn-sm"
@@ -371,7 +371,7 @@ export default function App() {
                       title={t("停止服务")}
                     >
                       <Icon name="stop" size={12} />
-                      {t("停止")}
+                      <span className="hidden md:inline">{t("停止")}</span>
                     </button>
                     <button
                       className="btn btn-warn btn-sm"
@@ -380,12 +380,12 @@ export default function App() {
                       title={t("重启服务")}
                     >
                       <Icon name="restart" size={12} />
-                      {t("重启")}
+                      <span className="hidden md:inline">{t("重启")}</span>
                     </button>
                   </div>
 
                   <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
                       {t("编译")}
                     </span>
                     {compiling ? (
@@ -402,7 +402,7 @@ export default function App() {
                           title={t("增量快速编译")}
                         >
                           <Icon name="compile" size={12} />
-                          {t("快速编译")}
+                          <span className="hidden md:inline">{t("快速编译")}</span>
                         </button>
                         <button
                           className="btn btn-ghost btn-sm"
@@ -411,7 +411,7 @@ export default function App() {
                           title={t("指定模块部分编译")}
                         >
                           <Icon name="grid" size={12} />
-                          {t("部分")}
+                          <span className="hidden md:inline">{t("部分")}</span>
                         </button>
                         <button
                           className="btn btn-ghost btn-sm"
@@ -420,14 +420,14 @@ export default function App() {
                           title={t("全量完整编译")}
                         >
                           <Icon name="boxes" size={12} />
-                          {t("全量")}
+                          <span className="hidden md:inline">{t("全量")}</span>
                         </button>
                       </>
                     )}
                   </div>
 
                   <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
                       {t("产物")}
                     </span>
                     {packaging ? (
@@ -447,7 +447,7 @@ export default function App() {
                         }
                       >
                         <Icon name="pkg" size={12} />
-                        {t("打包")}
+                        <span className="hidden md:inline">{t("打包")}</span>
                       </button>
                     )}
                   </div>
@@ -461,11 +461,11 @@ export default function App() {
               )}
             </div>
 
-            <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-4">
+            <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-2 sm:px-4">
               {TABS.map(([id, label, icon]) => (
                 <button
                   key={id}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm transition-colors sm:px-3 sm:py-2 ${
                     tab === id
                       ? "border-b-2 border-[var(--blu)] font-medium text-[var(--blu)]"
                       : "text-[var(--mut)] hover:text-[var(--txt)]"
