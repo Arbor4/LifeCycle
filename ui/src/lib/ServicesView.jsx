@@ -433,7 +433,7 @@ export default function ServicesView({
                     </span>
                   </td>
                   <td>
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap">
                       <span className={`dot dot-${r.state}`} />
                       <span
                         className={

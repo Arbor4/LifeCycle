@@ -13,7 +13,12 @@ fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ name: "admin-d
 fs.writeFileSync(path.join(tmp, "server.js"), "console.log('READY admin-demo'); setInterval(()=>{},1000);");
 fs.writeFileSync(path.join(tmp, "build.js"), "console.log('built');");
 
-const child = spawn(BIN, ["--mcp", "-c", "fixtures/simple/lifecycle.toml"], { stdio: ["pipe", "pipe", "pipe"] });
+// 隔离 HOME，避免 e2e 注册/分组污染真实 ~/.lifecycle
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "lc-mcp-home-"));
+const child = spawn(BIN, ["--mcp", "-c", "fixtures/simple/lifecycle.toml"], {
+  stdio: ["pipe", "pipe", "pipe"],
+  env: { ...process.env, HOME: home },
+});
 const pending = new Map();
 let nextId = 1;
 createInterface({ input: child.stdout }).on("line", (line) => {
@@ -92,5 +97,6 @@ console.log("delete_group ✓");
 await call("stop_project", { project: PROJ });
 child.kill();
 fs.rmSync(tmp, { recursive: true, force: true });
+fs.rmSync(home, { recursive: true, force: true });
 console.log("MCP ADMIN E2E ALL PASS");
 process.exit(0);
