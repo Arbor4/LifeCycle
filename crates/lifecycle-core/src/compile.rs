@@ -147,6 +147,9 @@ pub fn spawn_compile(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(false);
+    // 独立进程组：取消时 kill(-pid) 才能覆盖 sh 及其 cargo/npm 子孙进程
+    #[cfg(unix)]
+    cmd.process_group(0);
     // 与 process::spawn 一致：GUI 启动时 PATH 极简，编译命令同样需要工具链补全
     #[cfg(unix)]
     cmd.env("PATH", crate::process::toolchain_path());
@@ -260,6 +263,11 @@ async fn terminate_then_kill(
         Ok(s) => Ok(s?),
         Err(_) => {
             process::kill_group(pid);
+            // 兜底：组信号落空时直接杀 shell 本体，避免 child.wait 永久挂起
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
             Ok(child.wait().await?)
         }
     }

@@ -50,9 +50,9 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
 
   const color = STATE_COLOR[status.state] ?? "var(--mut)";
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-[240px] flex-1">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 max-w-full items-center gap-1.5">
           <span className="text-lg font-bold text-[var(--txt)]">
             {currentServiceName}
           </span>
@@ -70,7 +70,9 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
           <span className="rounded bg-[var(--bg3)] border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--mut)] mono font-medium">
             {status.env_name || status.profile}
           </span>
-          <span className="text-xs text-[var(--dim)] mono">({project})</span>
+          <span className="mono truncate text-xs text-[var(--dim)]" title={project}>
+            ({project})
+          </span>
         </div>
         <span
           className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs"

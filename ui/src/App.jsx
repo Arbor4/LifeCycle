@@ -283,7 +283,7 @@ export default function App() {
         ) : current ? (
           <>
             <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between">
                 <StatusCard status={current} project={sel.project} onRefresh={refresh} onSelect={openDetail} />
 
                 {/* 运行与编译操作区分开展示 */}
