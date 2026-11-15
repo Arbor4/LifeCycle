@@ -129,6 +129,9 @@ pub fn spawn_compile(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(false);
+    // 与 process::spawn 一致：GUI 启动时 PATH 极简，编译命令同样需要工具链补全
+    #[cfg(unix)]
+    cmd.env("PATH", crate::process::toolchain_path());
     #[cfg(unix)]
     cmd.process_group(0);
     let child = cmd

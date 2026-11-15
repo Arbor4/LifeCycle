@@ -134,7 +134,7 @@ pub fn shell_command(command: &str) -> Command {
 /// Prepend well-known user toolchain dirs to PATH so services started from a
 /// GUI-launched manager still find node / npm / cargo / mvn.
 #[cfg(unix)]
-fn toolchain_path() -> String {
+pub fn toolchain_path() -> String {
     use std::path::PathBuf;
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Ok(home) = std::env::var("HOME") {
