@@ -1,0 +1,6 @@
+target/
+.lifecycle/
+node_modules/
+dist/
+.DS_Store
+*.iconset/

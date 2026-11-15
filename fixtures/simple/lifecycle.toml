@@ -1,0 +1,36 @@
+[project]
+name = "fixture-simple"
+
+[profiles.default]
+workdir = "."
+
+[profiles.default.start]
+command = "sh server.sh"
+ready_pattern = "READY"
+ready_port = 18099
+ready_timeout_ms = 15000
+
+[profiles.default.compile.quick]
+command = "sh build.sh quick"
+parser = "maven"
+
+[profiles.default.compile.partial]
+command = "sh build.sh partial {targets}"
+parser = "maven"
+
+[profiles.default.compile.full]
+command = "sh build.sh full"
+parser = "maven"
+timeout_ms = 10000
+
+[profiles.worker]
+workdir = "."
+
+[profiles.worker.start]
+command = "echo worker-up; sleep 300"
+
+[logs]
+buffer_lines = 1000
+
+[process]
+stop_timeout_ms = 3000

@@ -1,0 +1,17 @@
+[package]
+name = "lifecycle-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lifecycle"
+path = "src/main.rs"
+
+[dependencies]
+lifecycle-core.workspace = true
+lifecycle-mcp.workspace = true
+tokio.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing-subscriber.workspace = true

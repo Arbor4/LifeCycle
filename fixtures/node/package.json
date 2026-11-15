@@ -1,0 +1,8 @@
+{
+  "name": "fixture-node",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,26 @@
+[project]
+name = "fixture-rust"
+
+[profiles.default]
+workdir = "."
+
+[profiles.default.start]
+command = "cargo run -q"
+ready_pattern = "READY"
+ready_port = 18093
+ready_timeout_ms = 60000
+
+[profiles.default.compile.quick]
+command = "cargo build -q"
+parser = "cargo"
+timeout_ms = 300000
+
+[profiles.default.compile.partial]
+command = "cargo build -q -p {targets}"
+parser = "cargo"
+timeout_ms = 300000
+
+[profiles.default.compile.full]
+command = "cargo clean -q && cargo build -q --release"
+parser = "cargo"
+timeout_ms = 600000

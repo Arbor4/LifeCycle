@@ -1,0 +1,26 @@
+[project]
+name = "fixture-node"
+
+[profiles.default]
+workdir = "."
+
+[profiles.default.start]
+command = "node server.js"
+ready_pattern = "READY"
+ready_port = 18092
+ready_timeout_ms = 20000
+
+[profiles.default.compile.quick]
+command = "npx tsc -p tsconfig.json --incremental"
+parser = "typescript"
+timeout_ms = 120000
+
+[profiles.default.compile.partial]
+command = "npx tsc -p tsconfig.json --incremental"
+parser = "typescript"
+timeout_ms = 120000
+
+[profiles.default.compile.full]
+command = "npx tsc -p tsconfig.json --incremental false"
+parser = "typescript"
+timeout_ms = 120000

@@ -1,0 +1,17 @@
+[package]
+name = "lifecycle-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lifecycle-core.workspace = true
+rmcp = { version = "3", features = ["server", "macros", "schemars", "transport-io", "transport-streamable-http-server"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars = "1"
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

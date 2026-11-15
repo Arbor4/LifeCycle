@@ -1,0 +1,26 @@
+[project]
+name = "fixture-java"
+
+[profiles.default]
+workdir = "."
+
+[profiles.default.start]
+command = "java -cp target/classes demo.App"
+ready_pattern = "READY"
+ready_port = 18091
+ready_timeout_ms = 30000
+
+[profiles.default.compile.quick]
+command = "mvn compile"
+parser = "maven"
+timeout_ms = 300000
+
+[profiles.default.compile.partial]
+command = "mvn compile -pl {targets} -am"
+parser = "maven"
+timeout_ms = 300000
+
+[profiles.default.compile.full]
+command = "mvn clean package -DskipTests"
+parser = "maven"
+timeout_ms = 600000

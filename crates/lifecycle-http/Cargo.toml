@@ -1,0 +1,20 @@
+[package]
+name = "lifecycle-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lifecycle-core.workspace = true
+lifecycle-mcp.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+futures = "0.3"
+async-stream = "0.3"

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/lifecycle-core", "crates/lifecycle-cli", "crates/lifecycle-mcp", "crates/lifecycle-http", "crates/lifecycle-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+lifecycle-core = { path = "crates/lifecycle-core" }
+lifecycle-mcp = { path = "crates/lifecycle-mcp" }
+lifecycle-http = { path = "crates/lifecycle-http" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+regex = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+libc = "0.2"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true
