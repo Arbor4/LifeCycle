@@ -6,6 +6,7 @@ import { copyText } from "./clipboard.js";
 import { pushToast } from "./toast.js";
 
 const FORM_KEYS = [
+  "env_name",
   "start_command",
   "fast_start_command",
   "stop_command",
@@ -20,6 +21,7 @@ const FORM_KEYS = [
 
 function seedForm(c) {
   return {
+    env_name: c?.env_name || "",
     start_command: c?.command || "",
     fast_start_command: c?.fast_start_command || "",
     stop_command: c?.stop_command || "",
@@ -185,6 +187,7 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
         await api(`/api/projects/${encodeURIComponent(project)}/profiles/${encodeURIComponent(targetProfile)}`, {
           method: "PUT",
           body: JSON.stringify({
+            env_name: form.env_name.trim(),
             start_command: form.start_command.trim(),
             fast_start_command: form.fast_start_command.trim(),
             stop_command: form.stop_command.trim(),
@@ -296,14 +299,15 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
 
             <label className="block">
               <span className="field-label flex items-center gap-1">
-                <Icon name="tag" size={11} className="text-[var(--dim)]" />
-                {t("当前环境 (Profile)")}
+                <Icon name="tag" size={11} className="text-[var(--blu)]" />
+                {t("环境名称（env_name）")}
               </span>
               <input
-                className="input mono w-full bg-[var(--bg2)] cursor-not-allowed text-[var(--mut)]"
-                value={current.env_name || current.profile}
-                disabled
-                title={t("环境配置")}
+                className={inputCls}
+                value={form.env_name}
+                onChange={(e) => updateField("env_name", e.target.value)}
+                placeholder="dev / test / prod"
+                title={t("环境名写入 lifecycle.toml 的 env_name，用于区分同一服务的不同环境配置。")}
               />
             </label>
 

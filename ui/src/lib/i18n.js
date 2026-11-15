@@ -441,6 +441,13 @@ const EN = {
   "原文保存会整份替换 lifecycle.toml（注释需自行保留）；保存前自动校验，失败不写盘。":
     "Saving raw replaces lifecycle.toml wholesale (keep comments yourself); validated before write, nothing is written on failure.",
   "环境: {env}": "Environment: {env}",
+  修改环境名称: "Edit environment name",
+  环境名称: "Environment name",
+  保存环境名: "Save environment",
+  "环境名已修改为「{name}」": "Environment renamed to “{name}”",
+  "环境名写入 lifecycle.toml 的 env_name，用于区分同一服务的不同环境配置。":
+    "Stored as env_name in lifecycle.toml to distinguish environments of the same service.",
+  "环境名称（env_name）": "Environment name (env_name)",
   打包: "Package",
   "打包产物（app/bundle/dist，按 compile.package 配置）": "Build distributable artifacts (app/bundle/dist per compile.package)",
   "未配置打包命令（compile.package）": "No package command configured (compile.package)",

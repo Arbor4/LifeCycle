@@ -590,8 +590,10 @@ pub fn parse_service_and_env(
         return (s.to_string(), e.to_string());
     }
     if matches!(key, "dev" | "test" | "prod" | "staging" | "default") {
-        let env = if key == "default" { "dev" } else { key };
-        return ("main".to_string(), env.to_string());
+        let env = cfg_env
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| if key == "default" { "dev".to_string() } else { key.to_string() });
+        return ("main".to_string(), env);
     }
     (key.to_string(), cfg_env.unwrap_or("dev").to_string())
 }

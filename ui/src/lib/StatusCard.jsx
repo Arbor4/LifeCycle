@@ -20,6 +20,9 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
   const [renaming, setRenaming] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [savingRename, setSavingRename] = useState(false);
+  const [renamingEnv, setRenamingEnv] = useState(false);
+  const [newEnvName, setNewEnvName] = useState("");
+  const [savingEnv, setSavingEnv] = useState(false);
 
   useEffect(() => {
     const t2 = setInterval(() => setNow(Date.now()), 1000);
@@ -27,6 +30,27 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
   }, []);
 
   const currentServiceName = status.service || status.profile;
+  const currentEnv = status.env_name || status.profile;
+
+  async function handleSaveEnv(e) {
+    e?.preventDefault();
+    const trimmed = newEnvName.trim();
+    if (!trimmed || trimmed === currentEnv || savingEnv) return;
+    setSavingEnv(true);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project)}/profiles/${encodeURIComponent(status.profile)}`, {
+        method: "PUT",
+        body: JSON.stringify({ env_name: trimmed }),
+      });
+      pushToast(t("环境名已修改为「{name}」", { name: trimmed }), { kind: "success" });
+      setRenamingEnv(false);
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      pushToast(err.message, { kind: "error" });
+    } finally {
+      setSavingEnv(false);
+    }
+  }
 
   async function handleSaveRename(e) {
     e?.preventDefault();
@@ -67,9 +91,17 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
           >
             <Icon name="edit" size={12} />
           </button>
-          <span className="rounded bg-[var(--bg3)] border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--mut)] mono font-medium">
-            {status.env_name || status.profile}
-          </span>
+          <button
+            type="button"
+            className="rounded bg-[var(--bg3)] border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--mut)] mono font-medium transition-colors hover:border-[var(--blu)] hover:text-[var(--blu)]"
+            title={t("修改环境名称")}
+            onClick={() => {
+              setNewEnvName(currentEnv);
+              setRenamingEnv(true);
+            }}
+          >
+            {currentEnv}
+          </button>
           <span className="mono truncate text-xs text-[var(--dim)]" title={project}>
             ({project})
           </span>
@@ -174,6 +206,46 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
           </label>
           <p className="mt-2 text-xs text-[var(--dim)] leading-5">
             {t("重命名将同步更新 lifecycle.toml 中该服务在全部环境（dev/test/prod）下的配置。")}
+          </p>
+        </Modal>
+      )}
+
+      {renamingEnv && (
+        <Modal
+          title={t("修改环境名称")}
+          icon="tag"
+          tone="blu"
+          width={400}
+          onClose={() => setRenamingEnv(false)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setRenamingEnv(false)}>
+                {t("取消")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={savingEnv || !newEnvName.trim() || newEnvName.trim() === currentEnv}
+                onClick={handleSaveEnv}
+              >
+                {savingEnv ? <span className="spinner" /> : <Icon name="save" size={12} />}
+                {t("保存环境名")}
+              </button>
+            </>
+          }
+        >
+          <label className="block">
+            <span className="field-label">{t("环境名称")}</span>
+            <input
+              className="input mono w-full"
+              value={newEnvName}
+              onChange={(e) => setNewEnvName(e.target.value)}
+              placeholder="dev / test / prod"
+              autoFocus
+            />
+          </label>
+          <p className="mt-2 text-xs leading-5 text-[var(--dim)]">
+            {t("环境名写入 lifecycle.toml 的 env_name，用于区分同一服务的不同环境配置。")}
           </p>
         </Modal>
       )}
