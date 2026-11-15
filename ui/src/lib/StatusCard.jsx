@@ -44,7 +44,25 @@ export default function StatusCard({ status, project }) {
           {t("运行时长")} <span className="mono text-[var(--txt)]">{uptime(status.uptime_ms)}</span>
         </span>
         <span>
-          {t("端口")} <span className="mono text-[var(--txt)]">{status.port ?? "—"}</span>
+          {t("端口")}{" "}
+          {status.port ? (
+            status.state === "running" ? (
+              <a
+                href={`http://localhost:${status.port}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mono text-[var(--blu)] hover:underline inline-flex items-center gap-1 font-semibold"
+                title={t("在浏览器中打开 http://localhost:{port}", { port: status.port })}
+              >
+                {status.port}
+                <Icon name="open" size={11} />
+              </a>
+            ) : (
+              <span className="mono text-[var(--txt)]">{status.port}</span>
+            )
+          ) : (
+            <span className="mono text-[var(--txt)]">—</span>
+          )}
         </span>
         {status.last_build ? (
           <span className="inline-flex items-center gap-1.5">

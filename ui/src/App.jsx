@@ -15,6 +15,7 @@ import GroupsView from "./lib/GroupsView.jsx";
 import McpView from "./lib/McpView.jsx";
 import ToastHost from "./lib/ToastHost.jsx";
 import RegisterModal from "./lib/RegisterModal.jsx";
+import ProjectManageModal from "./lib/ProjectManageModal.jsx";
 import Icon from "./lib/Icon.jsx";
 
 const TABS = [
@@ -37,6 +38,7 @@ export default function App() {
   const [showPartial, setShowPartial] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [registerKind, setRegisterKind] = useState("project");
+  const [manageProject, setManageProject] = useState(null);
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
   const [online, setOnline] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
@@ -222,11 +224,31 @@ export default function App() {
     <div className="flex h-full">
       <Sidebar
         projects={projects}
+        sel={sel}
         view={view}
+        selectedProject={selectedProject}
         online={online}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
-        onNavigate={(v) => setView(v)}
+        onSelect={openDetail}
+        onSelectProject={(p) => {
+          setSelectedProject(p);
+          setView("services");
+        }}
+        onNavigate={(v) => {
+          setView(v);
+          if (v !== "services") setSelectedProject(null);
+        }}
+        onOpenAddProject={() => {
+          setRegisterKind("project");
+          setShowRegister(true);
+        }}
+        onManageProject={(p) => setManageProject(p)}
+        onAddServiceToProject={(p) => {
+          setSelectedProject(p);
+          setRegisterKind("service");
+          setShowRegister(true);
+        }}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -239,6 +261,7 @@ export default function App() {
               setRegisterKind("service");
               setShowRegister(true);
             }}
+            onManageProject={(p) => setManageProject(p)}
             onOpen={openDetail}
           />
         ) : view === "groups" ? (
@@ -417,15 +440,43 @@ export default function App() {
       {showRegister && (
         <RegisterModal
           kind={registerKind}
+          projects={projects}
+          defaultProject={selectedProject || sel.project}
           onClose={() => setShowRegister(false)}
-          onSaved={async (newProject) => {
+          onSaved={async (newProject, newProfile) => {
             setShowRegister(false);
             const data = await refresh();
             if (newProject) {
               setSelectedProject(newProject);
               setView("services");
             }
+            if (newProject && newProfile) openDetail(newProject, newProfile);
           }}
+        />
+      )}
+      {manageProject && (
+        <ProjectManageModal
+          project={manageProject}
+          projects={projects}
+          onClose={() => setManageProject(null)}
+          onRenamed={(newName) => {
+            if (selectedProject === manageProject) setSelectedProject(newName);
+            if (sel.project === manageProject) setSel((s) => ({ ...s, project: newName }));
+            setManageProject(newName);
+            refresh();
+          }}
+          onRemoved={(removedName) => {
+            if (selectedProject === removedName) setSelectedProject(null);
+            if (sel.project === removedName) setSel({ project: null, profile: null });
+            setManageProject(null);
+            refresh();
+          }}
+          onAddService={() => {
+            setSelectedProject(manageProject);
+            setRegisterKind("service");
+            setShowRegister(true);
+          }}
+          onRefresh={refresh}
         />
       )}
       <ToastHost />

@@ -72,6 +72,16 @@ const toml = fs.readFileSync(path.join(tmp, "lifecycle.toml"), "utf8");
 assert(toml.includes("ready_port = 18099") && toml.includes("node build.js"), "toml written");
 console.log("configure_service ✓ (toml updated, comments preserved)");
 
+const created = await call("configure_service", {
+  project: PROJ,
+  profile: "extra",
+  start_command: "node server.js",
+  ready_pattern: "READY",
+});
+assert(created.ok === true, "configure creates absent profile");
+assert(fs.readFileSync(path.join(tmp, "lifecycle.toml"), "utf8").includes("[profiles.extra]"), "new profile table written");
+console.log("configure_service create-if-absent ✓");
+
 const started = await call("start_project", { project: PROJ, waitForReady: true });
 assert(started.state === "Running" || started.state === "running", "start: " + JSON.stringify(started));
 console.log("start after configure ✓");

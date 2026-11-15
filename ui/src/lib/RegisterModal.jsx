@@ -1,11 +1,302 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 import { pushToast } from "./toast.js";
 import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Modal from "./Modal.jsx";
 
-export default function RegisterModal({ kind = "project", onClose, onSaved }) {
+export default function RegisterModal({ kind = "project", projects = [], defaultProject = null, onClose, onSaved }) {
+  if (kind === "service") {
+    return <ServiceModal projects={projects} defaultProject={defaultProject} onClose={onClose} onSaved={onSaved} />;
+  }
+  return <ProjectModal onClose={onClose} onSaved={onSaved} />;
+}
+
+function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
+  const { t } = useI18n();
+  const [project, setProject] = useState(defaultProject || projects[0]?.project || "");
+  const [profile, setProfile] = useState("");
+  const [command, setCommand] = useState("");
+  const [workdir, setWorkdir] = useState("");
+  const [port, setPort] = useState("");
+  const [pattern, setPattern] = useState("");
+  const [timeout, setTimeoutMs] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const PRESETS = [
+    {
+      id: "web",
+      name: "🌐 Web 前端 (网页布局调试)",
+      profile: "web",
+      command: "npm run dev",
+      workdir: "ui",
+      port: "5173",
+      desc: "只拉起前端 Vite/Webpack 调试页面布局，轻量快速",
+    },
+    {
+      id: "desktop",
+      name: "🖥️ 桌面端 (Tauri / App)",
+      profile: "desktop",
+      command: "cargo tauri dev",
+      workdir: ".",
+      port: "",
+      desc: "拉起完整桌面端应用，测试系统交互与托盘",
+    },
+    {
+      id: "dev",
+      name: "🚀 开发环境 (dev)",
+      profile: "dev",
+      command: "npm run dev",
+      workdir: ".",
+      port: "",
+      desc: "日常开发环境调试",
+    },
+    {
+      id: "test",
+      name: "🧪 测试环境 (test)",
+      profile: "test",
+      command: "npm run test",
+      workdir: ".",
+      port: "",
+      desc: "执行自动化测试与质量检查",
+    },
+    {
+      id: "prod",
+      name: "📦 生产预览 (prod)",
+      profile: "prod",
+      command: "npm run preview",
+      workdir: ".",
+      port: "4173",
+      desc: "模拟真实打包后的生产预览环境",
+    },
+    {
+      id: "api",
+      name: "⚙️ 后端 API 服务",
+      profile: "api",
+      command: "cargo run",
+      workdir: ".",
+      port: "8080",
+      desc: "独立后端服务与接口",
+    },
+  ];
+
+  const proj = useMemo(() => projects.find((p) => p.project === project), [projects, project]);
+  const name = profile.trim();
+  const duplicate = !!name && !!proj?.profiles.some((s) => s.profile === name);
+  const canSave = !!project && !!name && !!command.trim() && !duplicate && !saving;
+
+  function applyPreset(p) {
+    let target = p.profile;
+    if (proj?.profiles?.some((s) => s.profile === target)) {
+      target = `${p.profile}-2`;
+    }
+    setProfile(target);
+    setCommand(p.command);
+    if (p.workdir) setWorkdir(p.workdir);
+    if (p.port) setPort(p.port);
+  }
+
+  async function save(e) {
+    e?.preventDefault();
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project)}/profiles`, {
+        method: "POST",
+        body: JSON.stringify({
+          profile: name,
+          start_command: command.trim(),
+          workdir: workdir.trim() || undefined,
+          ready_port: port ? Number(port) : undefined,
+          ready_pattern: pattern.trim() || undefined,
+          ready_timeout_ms: timeout ? Number(timeout) : undefined,
+        }),
+      });
+      pushToast(t("已添加服务「{key}」", { key: `${project}/${name}` }), { kind: "success" });
+      onSaved(project, name);
+    } catch (err) {
+      pushToast(err.message, { kind: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={t("添加服务")}
+      icon="plus"
+      tone="grn"
+      width={600}
+      onClose={onClose}
+      subtitle={t("在已注册项目下新增服务：配置启动命令与就绪检查即可，项目文件夹沿用外层已选项目。")}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose}>
+            {t("取消")}
+          </button>
+          <button type="submit" form="add-service-form" className="btn btn-success" disabled={!canSave}>
+            {saving ? <span className="spinner" /> : <Icon name="plus" />}
+            {t("添加服务")}
+          </button>
+        </>
+      }
+    >
+      <form id="add-service-form" onSubmit={save}>
+        <label className="block">
+          <span className="field-label">
+            {t("所属项目")} <span className="text-[var(--red)]">*</span>
+          </span>
+          {projects.length ? (
+            <select className="input w-full" value={project} onChange={(e) => setProject(e.target.value)}>
+              {projects.map((p) => (
+                <option key={p.project} value={p.project}>
+                  {p.project}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--bg2)] px-3 py-2 text-xs text-[var(--dim)]">
+              {t("暂无已注册项目，请先在侧边栏添加项目")}
+            </div>
+          )}
+        </label>
+        {proj?.path && (
+          <div
+            className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--dim)]"
+            title={t("项目根目录")}
+          >
+            <Icon name="folder" size={12} className="flex-none text-[var(--amb)]" />
+            <span className="mono truncate">{proj.path}</span>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <span className="field-label block text-xs">
+            {t("环境与场景快速预设（点击自动填入）")}
+          </span>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-2.5 py-1 text-xs text-[var(--txt)] hover:border-[var(--blu)] hover:text-[var(--blu)] transition-colors"
+                title={t(p.desc)}
+                onClick={() => applyPreset(p)}
+              >
+                {t(p.name)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3.5 grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="field-label">
+              {t("服务名称（profile）")} <span className="text-[var(--red)]">*</span>
+            </span>
+            <input
+              className="input mono w-full"
+              placeholder={t("例如 dev / api / web")}
+              value={profile}
+              onChange={(e) => setProfile(e.target.value)}
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="field-label">{t("就绪端口（可选）")}</span>
+            <input
+              className="input mono w-full"
+              type="number"
+              min={1}
+              max={65535}
+              placeholder={t("例如 5173 / 8080")}
+              value={port}
+              onChange={(e) => setPort(e.target.value)}
+            />
+          </label>
+        </div>
+        {duplicate && (
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--red)]">
+            <Icon name="warn" size={12} className="flex-none" />
+            {t("该项目下已存在同名服务「{name}」，请换一个名称", { name })}
+          </p>
+        )}
+
+        <label className="mt-3 block">
+          <span className="field-label">
+            {t("启动命令")} <span className="text-[var(--red)]">*</span>
+          </span>
+          <input
+            className="input mono w-full"
+            placeholder={t("例如 npm run dev / cargo run")}
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            required
+          />
+        </label>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="field-label">{t("工作目录（相对项目根，可选）")}</span>
+            <input
+              className="input mono w-full"
+              placeholder="."
+              value={workdir}
+              onChange={(e) => setWorkdir(e.target.value)}
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              <Icon name={showAdvanced ? "down" : "right"} size={12} />
+              {t("就绪检查（正则 / 超时）")}
+            </button>
+          </div>
+        </div>
+        {showAdvanced && (
+          <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 p-3">
+            <label className="block">
+              <span className="field-label">{t("就绪正则（可选）")}</span>
+              <input
+                className="input mono w-full"
+                placeholder={t("例如 Local:.*http")}
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="field-label">{t("就绪超时（毫秒，可选）")}</span>
+              <input
+                className="input mono w-full"
+                type="number"
+                min={1000}
+                step={1000}
+                placeholder="30000"
+                value={timeout}
+                onChange={(e) => setTimeoutMs(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+
+        <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-[var(--dim)]">
+          <Icon name="shield" size={12} className="mt-0.5 flex-none text-[var(--grn)]" />
+          <span>
+            {t("服务配置将写入项目 lifecycle.toml 的 [profiles.{name}]，保存后热加载并出现在服务列表。", {
+              name: name || "name",
+            })}
+          </span>
+        </p>
+      </form>
+    </Modal>
+  );
+}
+
+function ProjectModal({ onClose, onSaved }) {
   const { t } = useI18n();
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
@@ -102,16 +393,12 @@ export default function RegisterModal({ kind = "project", onClose, onSaved }) {
 
   return (
     <Modal
-      title={kind === "service" ? t("添加 / 导入服务") : t("添加 / 导入项目")}
+      title={t("添加 / 导入项目")}
       icon="folder"
       tone="grn"
       width={600}
       onClose={onClose}
-      subtitle={
-        kind === "service"
-          ? t("选择或填入服务目录。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。")
-          : t("选择或填入项目文件夹。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。")
-      }
+      subtitle={t("选择或填入项目文件夹。没有 lifecycle.toml 时会自动探测工程类型（Node/Vite、Rust、Maven 等）并生成配置；已有配置则直接导入。")}
       footer={
         <>
           <button type="button" className="btn" onClick={onClose}>

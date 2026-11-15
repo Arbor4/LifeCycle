@@ -281,7 +281,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | `cancel_compile` | 取消进行中的编译 | 编译 |
 | `reload_config` | 重载 lifecycle.toml | 高危，**默认不暴露** |
 | `register_project` | 注册/导入项目：探测工程、生成 lifecycle.toml、热加载 | 配置 |
-| `configure_service` | 改写 profile 的启动命令/就绪端口/正则/超时/workdir/env/三档编译 | 配置 |
+| `configure_service` | 配置 profile（不存在则创建）：启动命令/就绪端口/正则/超时/workdir/env/三档编译 | 配置 |
 | `list_groups` / `create_group` / `update_group` / `delete_group` | 管理服务分组 | 只读 / 控制 |
 | `start_group` / `stop_group` / `restart_group` | 分组一键启停/重启，逐成员返回结果 | 控制 |
 
@@ -338,6 +338,7 @@ stdio 片段会注入当前 `PATH`，保证从 GUI 客户端拉起时能找到 n
 | GET | `/healthz` | 存活探针 |
 | GET | `/api/projects` | 全部项目 + profile 状态 |
 | POST | `/api/projects/register` | 注册/导入服务（可自动生成 toml） |
+| POST | `/api/projects/{project}/profiles` | 在已有项目内新增服务（profile） |
 | DELETE | `/api/projects/{project}` | 停止并卸载 |
 | POST | `/api/projects/{project}/reload` | 重载配置 |
 | GET | `/api/projects/{project}/config` | toml 路径 + 全文 |
@@ -420,6 +421,7 @@ cargo clippy --workspace --all-targets
 bash scripts/fixtures-e2e.sh    # java/node/rust/simple 四个 fixture 端到端
 node scripts/mcp-e2e.mjs        # MCP stdio 全工具端到端
 node scripts/mcp-admin-e2e.mjs  # MCP 注册/配置/分组工具端到端
+node scripts/http-add-service-e2e.mjs  # 添加服务 API：创建/校验/启动/清理
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 

@@ -255,7 +255,7 @@ pub async fn info(State(state): State<Arc<AppState>>) -> ApiResult {
     let mut config_args = base_args.clone();
     let mut projects = Vec::new();
     for (name, engine) in state.ws.snapshot() {
-        let guard = engine.lock().await;
+        let mut guard = engine.lock().await;
         let path = guard.config_path().to_path_buf();
         let transport = guard.mcp_transport().to_string();
         let expose = guard.mcp_expose().to_vec();

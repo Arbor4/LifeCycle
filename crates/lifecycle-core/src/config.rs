@@ -230,6 +230,7 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
     let mut doc = text
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+    let existed = doc.get("profiles").and_then(|p| p.get(profile)).is_some();
 
     let base = ["profiles", profile];
     if let Some(w) = &patch.workdir {
@@ -272,12 +273,60 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         }
     }
 
+    // 新建的 profile 保留显式表头，避免只渲染出 [profiles.x.start]
+    if !existed {
+        if let Some(t) = doc
+            .get_mut("profiles")
+            .and_then(|p| p.get_mut(profile))
+            .and_then(|i| i.as_table_mut())
+        {
+            t.set_implicit(false);
+        }
+    }
+
     let updated: Config = toml::from_str(&doc.to_string())?;
     updated.validate()?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Remove a profile from lifecycle.toml.
+pub fn delete_profile(path: &Path, profile: &str) -> Result<()> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+    if let Some(profiles) = doc.get_mut("profiles").and_then(|p| p.as_table_mut()) {
+        profiles.remove(profile);
+    }
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string())?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Rename the project in lifecycle.toml.
+pub fn rename_project(path: &Path, new_name: &str) -> Result<()> {
+    if new_name.trim().is_empty() {
+        return Err(Error::Config("project name must not be empty".into()));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("cannot read {}: {e}", path.display())))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
+    ensure_table(&mut doc, &["project"])["name"] = toml_edit::value(new_name);
+    let updated: Config = toml::from_str(&doc.to_string())?;
+    updated.validate()?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, doc.to_string())?;
     std::fs::rename(&tmp, path)?;

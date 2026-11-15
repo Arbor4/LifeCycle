@@ -103,7 +103,8 @@ impl Engine {
             .unwrap_or(0))
     }
 
-    pub fn list(&self) -> Result<Vec<ProfileStatus>> {
+    pub fn list(&mut self) -> Result<Vec<ProfileStatus>> {
+        self.reap_exited()?;
         let records = self.store.load()?;
         let builds = compile::load_builds(&self.builds_path)?;
         Ok(self
@@ -116,7 +117,8 @@ impl Engine {
             .collect())
     }
 
-    pub fn status(&self, profile: &str) -> Result<ProfileStatus> {
+    pub fn status(&mut self, profile: &str) -> Result<ProfileStatus> {
+        self.reap_exited()?;
         let cfg = self.config.profile(profile)?;
         let records = self.store.load()?;
         let builds = compile::load_builds(&self.builds_path)?;
@@ -130,6 +132,35 @@ impl Engine {
 
     pub fn is_compiling(&self, profile: &str) -> bool {
         self.compiling.contains_key(profile)
+    }
+
+    /// 就绪后退出进程无人回收会变成僵尸（kill(pid,0) 仍为真），状态将永远停在
+    /// Running；每次状态轮询时 try_wait 回收并落盘 Crashed。
+    fn reap_exited(&mut self) -> Result<()> {
+        let mut records = self.store.load()?;
+        let mut changed = false;
+        let names: Vec<String> = self.children.keys().cloned().collect();
+        for name in names {
+            let exited = self
+                .children
+                .get_mut(&name)
+                .and_then(|child| child.try_wait().ok().flatten())
+                .is_some();
+            if !exited {
+                continue;
+            }
+            self.children.remove(&name);
+            if let Some(r) = records.get_mut(&name) {
+                if matches!(r.state, State::Running | State::Starting) {
+                    r.state = State::Crashed;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.store.save(&records)?;
+        }
+        Ok(())
     }
 
     pub async fn compile(
@@ -465,5 +496,36 @@ fn status_from(
                 last_build,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn exited_after_ready_is_reaped_as_crashed() {
+        let dir = std::env::temp_dir().join(format!("lc-reap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("lifecycle.toml");
+        std::fs::write(
+            &cfg_path,
+            "[project]\nname = \"reap\"\n[profiles.default]\n[profiles.default.start]\ncommand = \"sleep 30\"\n",
+        )
+        .unwrap();
+        let mut engine = Engine::new(&cfg_path).unwrap();
+        let out = engine.start("default", true).await.unwrap();
+        assert!(out.ready);
+        std::process::Command::new("kill")
+            .arg("-9")
+            .arg(out.pid.to_string())
+            .status()
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let statuses = engine.list().unwrap();
+        assert_eq!(statuses[0].state, State::Crashed);
+        assert!(!engine.children.contains_key("default"));
+        let _ = engine.stop("default").await;
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

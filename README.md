@@ -284,7 +284,7 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 | `cancel_compile` | Cancel an in-progress compile | build |
 | `reload_config` | Reload lifecycle.toml | danger, **hidden by default** |
 | `register_project` | Register/import a project: detect stack, generate lifecycle.toml, hot-load | config |
-| `configure_service` | Rewrite a profile's start command, ready port/pattern/timeout, workdir, env, quick/partial/full compile | config |
+| `configure_service` | Configure a profile (creates it if absent): start command, ready port/pattern/timeout, workdir, env, quick/partial/full compile | config |
 | `list_groups` / `create_group` / `update_group` / `delete_group` | Manage service groups | read / control |
 | `start_group` / `stop_group` / `restart_group` | One-click batch lifecycle for a group, per-member results | control |
 
@@ -341,6 +341,7 @@ Default `http://127.0.0.1:39517`.
 | GET | `/healthz` | Liveness probe |
 | GET | `/api/projects` | All projects + profile states |
 | POST | `/api/projects/register` | Register/import a service (may generate toml) |
+| POST | `/api/projects/{project}/profiles` | Add a service (profile) inside an existing project |
 | POST | `/api/projects/choose-directory` | Native OS folder picker |
 | POST | `/api/projects/detect` | Probe a directory (stack / command / port / existing toml) |
 | DELETE | `/api/projects/{project}` | Stop and unregister |
@@ -425,6 +426,7 @@ cargo clippy --workspace --all-targets
 bash scripts/fixtures-e2e.sh    # java/node/rust/simple fixtures end-to-end
 node scripts/mcp-e2e.mjs        # MCP stdio all-tools end-to-end
 node scripts/mcp-admin-e2e.mjs  # MCP register/configure/group tools end-to-end
+node scripts/http-add-service-e2e.mjs  # add-service API: create/validate/start/cleanup
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 

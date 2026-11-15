@@ -92,7 +92,7 @@ impl Workspace {
             .take(3)
             .filter_map(|name| {
                 let engine = self.engine(&name).ok()?;
-                let guard = engine.try_lock().ok()?;
+                let mut guard = engine.try_lock().ok()?;
                 let profile = guard.list().ok()?.first()?.profile.clone();
                 Some(GroupMember { project: name, profile })
             })

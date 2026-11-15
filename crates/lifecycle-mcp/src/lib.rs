@@ -86,7 +86,7 @@ pub fn tool_catalog() -> Vec<ToolInfo> {
         t("cancel_compile", "取消进行中的编译", "编译", "build"),
         t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
         t("register_project", "注册/导入项目：探测工程并生成 lifecycle.toml", "配置", "danger"),
-        t("configure_service", "改写服务的启动命令/就绪端口/正则/三档编译", "配置", "danger"),
+        t("configure_service", "配置服务（不存在则创建）：启动命令/就绪端口/正则/三档编译", "配置", "danger"),
         t("list_groups", "列出服务分组与成员", "分组", "read"),
         t("create_group", "新建服务分组", "分组", "control"),
         t("update_group", "更新分组名称或成员", "分组", "control"),
@@ -131,8 +131,11 @@ impl Workspace {
     }
 
     fn any_allows(&self, tool: &str) -> bool {
-        self.core
-            .names()
+        let names = self.core.names();
+        if names.is_empty() {
+            return tool != "reload_config";
+        }
+        names
             .iter()
             .any(|name| self.tool_allowed(&self.core.expose(name), tool))
     }
@@ -406,7 +409,7 @@ impl LifeCycleServer {
             let project = self.ws.core.resolve_project(&req.project)?;
             self.check_expose(&project, "get_status")?;
             let engine = self.ws.core.engine(&project)?;
-            let guard = engine.lock().await;
+            let mut guard = engine.lock().await;
             Ok(serde_json::to_value(guard.status(&req.profile)?)?)
         })
         .await
@@ -676,7 +679,7 @@ impl LifeCycleServer {
         .await
     }
 
-    #[tool(description = "Configure a service profile in lifecycle.toml: start command, readiness port/pattern/timeout, workdir, env and quick/partial/full compile commands. Other content and comments are preserved; config is reloaded hot.")]
+    #[tool(description = "Configure a service profile in lifecycle.toml (creates the profile if it does not exist): start command, readiness port/pattern/timeout, workdir, env and quick/partial/full compile commands. Other content and comments are preserved; config is reloaded hot.")]
     async fn configure_service(
         &self,
         Parameters(req): Parameters<ConfigureServiceReq>,

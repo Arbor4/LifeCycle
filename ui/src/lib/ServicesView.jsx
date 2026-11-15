@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, profilePath } from "./api.js";
 import { pushToast } from "./toast.js";
+import { copyText } from "./clipboard.js";
 import { STATE_LABEL, uptime } from "./format.js";
 import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
@@ -23,6 +24,7 @@ export default function ServicesView({
   selectedProject,
   onSelectProject,
   onOpenAdd,
+  onManageProject,
   onOpen,
 }) {
   const { t } = useI18n();
@@ -77,6 +79,29 @@ export default function ServicesView({
     }
     return projects;
   }, [projects, selectedProject]);
+
+  const currentProj = useMemo(
+    () => (selectedProject ? projects.find((p) => p.project === selectedProject) ?? null : null),
+    [projects, selectedProject]
+  );
+  const currentProjDir = currentProj?.path ? String(currentProj.path).replace(/\/lifecycle\.toml$/, "") : "";
+
+  async function copyProjPath(path) {
+    if (!path) return;
+    if (await copyText(path)) {
+      pushToast(t("已复制项目路径"), { kind: "success" });
+    }
+  }
+
+  async function revealProjPath(path) {
+    if (!path) return;
+    try {
+      await api("/api/reveal-path", { method: "POST", body: JSON.stringify({ path }) });
+      pushToast(t("已在文件管理器中定位"), { kind: "success" });
+    } catch (e) {
+      pushToast(e.message, { kind: "error" });
+    }
+  }
 
   const rows = useMemo(
     () =>
@@ -280,9 +305,19 @@ export default function ServicesView({
               </span>
             </>
           );
-          const cls = "panel flex items-center gap-3 px-3 py-2 text-left transition-colors hover:border-[var(--line3)]";
+          const isFilterActive = statusFilter === tile.filter;
+          const cls = `panel flex items-center gap-3 px-3 py-2 text-left transition-all ${
+            isFilterActive
+              ? "!border-[var(--blu)] shadow-sm bg-[var(--bg2)] ring-1 ring-[var(--blu)]"
+              : "hover:border-[var(--line3)]"
+          }`;
           return tile.filter ? (
-            <button key={tile.label} className={cls} onClick={() => setStatusFilter(tile.filter)} title={t("按「{label}」筛选", { label: tile.label })}>
+            <button
+              key={tile.label}
+              className={cls}
+              onClick={() => setStatusFilter(statusFilter === tile.filter ? "all" : tile.filter)}
+              title={t("按「{label}」筛选", { label: tile.label })}
+            >
               {inner}
             </button>
           ) : (
@@ -314,11 +349,21 @@ export default function ServicesView({
           <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
             ref={searchRef}
-            className="input w-52 pl-8"
+            className="input w-52 pl-8! pr-7!"
             placeholder={t("搜索服务…  /")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
+          {q && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--dim)] hover:text-[var(--txt)] p-0.5 rounded"
+              onClick={() => setQ("")}
+              title={t("清空")}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
         </div>
         <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="all">{t("全部状态")}</option>
@@ -327,7 +372,7 @@ export default function ServicesView({
           <option value="crashed">{t("崩溃")}</option>
           <option value="idle">{t("未启动")}</option>
         </select>
-        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，可直接选择文件夹导入服务")}>
+        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，在当前项目下配置新服务")}>
           <Icon name="plus" />
           {t("添加服务")}
         </button>
@@ -368,6 +413,51 @@ export default function ServicesView({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {currentProj && (
+        <div className="flex flex-wrap items-center justify-between border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-2 text-xs">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-[var(--dim)] flex-none">{t("项目路径:")}</span>
+            <span className="mono text-[var(--txt)] truncate select-all">{currentProjDir}</span>
+            <button
+              type="button"
+              className="text-[var(--dim)] hover:text-[var(--txt)] p-1 rounded hover:bg-[var(--bg2)] flex-none"
+              title={t("复制项目路径")}
+              onClick={() => copyProjPath(currentProjDir)}
+            >
+              <Icon name="copy" size={12} />
+            </button>
+            <button
+              type="button"
+              className="text-[var(--dim)] hover:text-[var(--txt)] p-1 rounded hover:bg-[var(--bg2)] flex-none"
+              title={t("在文件管理器中定位")}
+              onClick={() => revealProjPath(currentProjDir)}
+            >
+              <Icon name="open" size={12} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-none ml-2">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm !py-1 !px-2 flex items-center gap-1"
+              onClick={() => openAddModal()}
+              title={t("在此项目下添加新环境/服务（如 Web 端或桌面端）")}
+            >
+              <Icon name="plus" size={12} />
+              {t("添加服务/环境")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm !py-1 !px-2 flex items-center gap-1"
+              onClick={() => onManageProject && onManageProject(selectedProject)}
+              title={t("管理项目信息、重命名或移除项目")}
+            >
+              <Icon name="settings" size={12} />
+              {t("项目管理")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -573,7 +663,18 @@ export default function ServicesView({
         <span>{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
       </div>
 
-      {showRegister && <RegisterModal kind="service" onClose={() => setShowRegister(false)} onSaved={() => setShowRegister(false)} />}
+      {showRegister && (
+        <RegisterModal
+          kind="service"
+          projects={projects}
+          defaultProject={selectedProject}
+          onClose={() => setShowRegister(false)}
+          onSaved={(p, prof) => {
+            setShowRegister(false);
+            if (p && prof && onOpen) onOpen(p, prof);
+          }}
+        />
+      )}
     </div>
   );
 }

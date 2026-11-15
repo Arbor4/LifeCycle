@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::future::Future;
 use std::path::PathBuf;
@@ -158,6 +159,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/projects/choose-directory", post(choose_directory))
         .route("/api/projects/detect", post(detect_project))
         .route("/api/projects/{project}", delete(unregister_project))
+        .route("/api/projects/{project}/rename", post(rename_project_handler))
+        .route("/api/projects/{project}/profiles", post(add_service))
+        .route(
+            "/api/projects/{project}/profiles/{profile}",
+            delete(delete_service_profile),
+        )
+        .route("/api/reveal-path", post(reveal_path))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/mcp", get(mcp_admin::info))
         .route("/api/mcp/projects/{project}", put(mcp_admin::put_project))
@@ -220,8 +228,10 @@ async fn list_projects(State(state): State<Arc<AppState>>) -> ApiResult {
         let mut out = Vec::new();
         for name in state.ws.names() {
             let engine = state.ws.engine(&name)?;
-            let statuses = engine.lock().await.list()?;
-            out.push(json!({"project": name, "profiles": statuses}));
+            let mut guard = engine.lock().await;
+            let statuses = guard.list()?;
+            let path = guard.config_path().to_path_buf();
+            out.push(json!({"project": name, "path": path, "profiles": statuses}));
         }
         Ok(out)
     })
@@ -277,6 +287,187 @@ async fn register_project(
         Ok(json!({"project": project, "path": toml_path, "generated": generated}))
     })
     .await
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AddServiceBody {
+    profile: String,
+    start_command: String,
+    #[serde(default)]
+    workdir: Option<String>,
+    #[serde(default)]
+    ready_port: Option<u16>,
+    #[serde(default)]
+    ready_pattern: Option<String>,
+    #[serde(default)]
+    ready_timeout_ms: Option<u64>,
+    #[serde(default)]
+    env: Option<BTreeMap<String, String>>,
+}
+
+async fn add_service(
+    State(state): State<Arc<AppState>>,
+    Path(project): Path<String>,
+    Json(body): Json<AddServiceBody>,
+) -> ApiResult {
+    traced(
+        &state,
+        "add_service",
+        json!({"project": project, "body": body}),
+        async {
+            let name = body.profile.trim().to_string();
+            if name.is_empty() {
+                return Err(Error::Config("service name must not be empty".into()));
+            }
+            if body.start_command.trim().is_empty() {
+                return Err(Error::Config("start command must not be empty".into()));
+            }
+            if let Some(w) = &body.workdir {
+                let p = std::path::Path::new(w);
+                if p.is_absolute()
+                    || p.components().any(|c| matches!(c, std::path::Component::ParentDir))
+                {
+                    return Err(Error::Config(
+                        "workdir must be a relative path inside the project root".into(),
+                    ));
+                }
+            }
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            let config = lifecycle_core::config::Config::load(&path)?;
+            if config.profiles.contains_key(&name) {
+                return Err(Error::Config(format!(
+                    "service '{name}' already exists in project '{project}'"
+                )));
+            }
+            let patch = lifecycle_core::config::ProfilePatch {
+                workdir: body.workdir.clone(),
+                env: body.env.clone(),
+                start_command: Some(body.start_command.trim().to_string()),
+                ready_pattern: body.ready_pattern.clone(),
+                ready_port: body.ready_port,
+                ready_timeout_ms: body.ready_timeout_ms,
+                ..Default::default()
+            };
+            lifecycle_core::config::update_profile(&path, &name, &patch)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "project": project, "profile": name}))
+        },
+    )
+    .await
+}
+
+async fn delete_service_profile(
+    State(state): State<Arc<AppState>>,
+    Path((project, profile)): Path<(String, String)>,
+) -> ApiResult {
+    traced(
+        &state,
+        "delete_service_profile",
+        json!({"project": project, "profile": profile}),
+        async {
+            let engine = state.ws.engine(&project)?;
+            {
+                let mut guard = engine.lock().await;
+                if let Ok(status) = guard.status(&profile) {
+                    if matches!(
+                        status.state,
+                        lifecycle_core::process::State::Running
+                            | lifecycle_core::process::State::Starting
+                    ) {
+                        let _ = guard.stop(&profile).await;
+                    }
+                }
+            }
+            let path = engine.lock().await.config_path().to_path_buf();
+            lifecycle_core::config::delete_profile(&path, &profile)?;
+            let expose = {
+                let mut guard = engine.lock().await;
+                guard.reload_config()?;
+                guard.mcp_expose().to_vec()
+            };
+            state.ws.set_expose(&project, expose);
+            Ok(json!({"ok": true, "project": project, "profile": profile}))
+        },
+    )
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+struct RenameProjectBody {
+    name: String,
+}
+
+async fn rename_project_handler(
+    State(state): State<Arc<AppState>>,
+    Path(project): Path<String>,
+    Json(body): Json<RenameProjectBody>,
+) -> ApiResult {
+    let new_name = body.name.trim().to_string();
+    if new_name.is_empty() {
+        return Err(ApiError(Error::Config("project name must not be empty".into())));
+    }
+    traced(
+        &state,
+        "rename_project",
+        json!({"project": project, "new_name": new_name}),
+        async {
+            let engine = state.ws.engine(&project)?;
+            let path = engine.lock().await.config_path().to_path_buf();
+            lifecycle_core::config::rename_project(&path, &new_name)?;
+            state.ws.remove(&project)?;
+            let reg_name = state.ws.register(&path)?;
+            Ok(json!({"ok": true, "old_name": project, "new_name": reg_name, "path": path}))
+        },
+    )
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+struct RevealPathBody {
+    path: String,
+}
+
+async fn reveal_path(Json(body): Json<RevealPathBody>) -> ApiResult {
+    let path = std::path::Path::new(&body.path);
+    if !path.exists() {
+        return Err(ApiError(Error::NotFound(format!("path not found: {}", body.path))));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        if path.is_file() {
+            cmd.arg("-R").arg(&body.path);
+        } else {
+            cmd.arg(&body.path);
+        }
+        let _ = cmd.spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = std::process::Command::new("explorer");
+        if path.is_file() {
+            cmd.arg(format!("/select,{}", body.path));
+        } else {
+            cmd.arg(&body.path);
+        }
+        let _ = cmd.spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let target = if path.is_file() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+    }
+    Ok(Json(json!({"ok": true})))
 }
 
 #[derive(Debug, Deserialize)]
@@ -632,8 +823,13 @@ async fn events_stream(
             let mut snapshot = Vec::new();
             for name in ws.names() {
                 if let Ok(engine) = ws.engine(&name) {
-                    if let Ok(statuses) = engine.lock().await.list() {
-                        snapshot.push(json!({"project": name, "profiles": statuses}));
+                    let mut guard = engine.lock().await;
+                    if let Ok(statuses) = guard.list() {
+                        snapshot.push(json!({
+                            "project": name,
+                            "path": guard.config_path(),
+                            "profiles": statuses
+                        }));
                     }
                 }
             }
@@ -654,7 +850,7 @@ async fn list_modules(
 ) -> ApiResult {
     traced(&state, "list_modules", json!({"project": project}), async {
         let engine = state.ws.engine(&project)?;
-        let guard = engine.lock().await;
+        let mut guard = engine.lock().await;
         let mut all = Vec::new();
         for status in guard.list()? {
             let modules = guard.modules(&status.profile)?;

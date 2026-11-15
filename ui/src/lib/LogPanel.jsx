@@ -4,6 +4,7 @@ import { levelOf } from "./format.js";
 import { pushToast } from "./toast.js";
 import { useTheme } from "./theme.js";
 import { useI18n } from "./i18n.js";
+import { copyText } from "./clipboard.js";
 import { LogContent } from "./logHighlight.jsx";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
@@ -197,7 +198,7 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
         <div className="relative">
           <Icon name="search" size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
-            className="input w-36 pl-7"
+            className="input w-36 pl-7 pr-6"
             placeholder={t("搜索…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -205,6 +206,16 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
               if (e.key === "Enter") gotoMatch(e.shiftKey ? -1 : 1);
             }}
           />
+          {search && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--dim)] hover:text-[var(--txt)] p-0.5 rounded"
+              onClick={() => setSearch("")}
+              title={t("清空")}
+            >
+              <Icon name="x" size={11} />
+            </button>
+          )}
         </div>
         <button className="btn btn-sm" onClick={() => gotoMatch(-1)} title={t("上一个匹配 (Shift+Enter)")}>
           <Icon name="up" size={12} />
@@ -225,7 +236,20 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
           title={t("解析 ANSI 终端色与 Spring/Vite 风格语义高亮；子进程需重启后才会输出 ANSI（[logs].color）")}
         />
         <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label={t("自动滚动")} />
-        <button className="btn btn-sm" onClick={() => setLines([])}>
+        <button
+          className="btn btn-sm"
+          onClick={async () => {
+            if (!visible.length) return;
+            const ok = await copyText(visible.map((l) => l.text).join("\n"));
+            if (ok) pushToast(t("已复制 {n} 行日志", { n: visible.length }), { kind: "success" });
+          }}
+          disabled={!visible.length}
+          title={t("复制当前过滤出的日志内容")}
+        >
+          <Icon name="copy" size={12} />
+          {t("复制")}
+        </button>
+        <button className="btn btn-sm" onClick={() => setLines([])} title={t("清空当前显示屏")}>
           <Icon name="x" size={12} />
           {t("清屏")}
         </button>
