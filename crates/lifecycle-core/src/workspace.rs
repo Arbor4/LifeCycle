@@ -8,6 +8,7 @@ use crate::diagnostics::CallLog;
 use crate::engine::Engine;
 use crate::error::{Error, Result};
 use crate::groups::{new_id, Group, GroupMember, GroupStore};
+use crate::logs::LogHub;
 use crate::registry::Registry;
 
 /// Multi-project holder shared by MCP, HTTP and the desktop app.
@@ -17,6 +18,7 @@ pub struct Workspace {
     engines: Mutex<HashMap<String, Arc<AsyncMutex<Engine>>>>,
     expose: Mutex<HashMap<String, Vec<String>>>,
     paths: Mutex<HashMap<String, PathBuf>>,
+    hubs: Mutex<HashMap<String, LogHub>>,
     registry: Registry,
     groups: GroupStore,
     call_log: Arc<CallLog>,
@@ -55,6 +57,7 @@ impl Workspace {
             engines: Mutex::new(HashMap::new()),
             expose: Mutex::new(HashMap::new()),
             paths: Mutex::new(HashMap::new()),
+            hubs: Mutex::new(HashMap::new()),
             registry,
             groups,
             call_log: Arc::new(CallLog::new()),
@@ -132,6 +135,10 @@ impl Workspace {
             .lock()
             .unwrap()
             .insert(name.clone(), config_path.to_path_buf());
+        self.hubs
+            .lock()
+            .unwrap()
+            .insert(name.clone(), engine.hub());
         engines.insert(name.clone(), Arc::new(AsyncMutex::new(engine)));
         Ok(name)
     }
@@ -149,10 +156,35 @@ impl Workspace {
             .remove(name)
             .ok_or_else(|| Error::NotFound(format!("project '{name}'")))?;
         self.expose.lock().unwrap().remove(name);
+        self.hubs.lock().unwrap().remove(name);
         if let Some(path) = self.paths.lock().unwrap().remove(name) {
             let _ = self.registry.remove(&path);
         }
         Ok(())
+    }
+
+    /// Log hub without taking the engine mutex: log reads/streaming stay
+    /// responsive while a long compile/package holds the engine lock.
+    pub fn hub(&self, project: &str) -> Result<LogHub> {
+        if let Some(h) = self.hubs.lock().unwrap().get(project) {
+            return Ok(h.clone());
+        }
+        let path = self
+            .paths
+            .lock()
+            .unwrap()
+            .get(project)
+            .cloned()
+            .ok_or_else(|| Error::NotFound(format!("project '{project}'")))?;
+        let config = crate::config::Config::load(&path)?;
+        let hub = LogHub::new(crate::config::ProjectPaths::new(&path, &config).log_dir);
+        self.hubs.lock().unwrap().insert(project.to_string(), hub.clone());
+        Ok(hub)
+    }
+
+    /// Drop the cached hub after config edits that may change logs.dir.
+    pub fn forget_hub(&self, project: &str) {
+        self.hubs.lock().unwrap().remove(project);
     }
 
     pub fn engine(&self, project: &str) -> Result<Arc<AsyncMutex<Engine>>> {

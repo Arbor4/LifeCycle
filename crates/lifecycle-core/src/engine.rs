@@ -9,7 +9,7 @@ use tokio::process::Child;
 use tokio::sync::Notify;
 
 use crate::compile::{
-    self, BuildResult, BuildSummary, CompileControl, CompileKind,
+    self, BuildResult, BuildSummary, CompileControl, CompileKind, CompileRun,
 };
 use crate::config::{Config, ProjectPaths};
 use crate::error::{Error, Result};
@@ -35,6 +35,7 @@ pub struct ProfileStatus {
     pub compile_quick: Option<String>,
     pub compile_partial: Option<String>,
     pub compile_full: Option<String>,
+    pub compile_package: Option<String>,
     pub last_build: Option<BuildSummary>,
 }
 
@@ -139,6 +140,10 @@ impl Engine {
         ))
     }
 
+    pub fn hub(&self) -> crate::logs::LogHub {
+        self.hub.clone()
+    }
+
     pub fn is_compiling(&self, profile: &str) -> bool {
         self.compiling.contains_key(profile)
     }
@@ -189,11 +194,31 @@ impl Engine {
         targets: &[String],
         cancel: Arc<Notify>,
     ) -> Result<BuildResult> {
+        let mut run = self.compile_begin(profile, kind, targets, cancel)?;
+        let output = match Self::compile_wait(&mut run).await {
+            Ok(o) => o,
+            Err(e) => {
+                self.compile_abort(run);
+                return Err(e);
+            }
+        };
+        self.compile_end(run, output)
+    }
+
+    /// 阶段 1（持引擎锁）：校验、跨进程锁、spawn、登记控制块。
+    pub fn compile_begin(
+        &mut self,
+        profile: &str,
+        kind: CompileKind,
+        targets: &[String],
+        cancel: Arc<Notify>,
+    ) -> Result<CompileRun> {
         let profile_cfg = self.config.profile(profile)?.clone();
         let cmd_cfg = match kind {
             CompileKind::Quick => profile_cfg.compile.quick.as_ref(),
             CompileKind::Partial => profile_cfg.compile.partial.as_ref(),
             CompileKind::Full => profile_cfg.compile.full.as_ref(),
+            CompileKind::Package => profile_cfg.compile.package.as_ref(),
         }
         .ok_or_else(|| {
             Error::NotFound(format!(
@@ -239,41 +264,72 @@ impl Engine {
             },
         );
 
-        let started = Instant::now();
-        let waited = compile::wait_compile(
-            child,
-            pid,
-            cmd_cfg.timeout_ms,
-            cancel,
-            self.config.process.stop_timeout_ms,
-        )
-        .await;
-        self.compiling.remove(profile);
-        compile::release_lock(&lock);
-        let output = waited?;
-        let duration_ms = started.elapsed().as_millis() as u64;
-        let result = compile::build_result(&output, cmd_cfg.parser.as_deref(), duration_ms);
-
-        // 编译输出落盘，供 UI / get_logs(source="build") / tail -f 查看。
+        // 起始标记 + 实时 tee：长编译/打包期间 UI 编译日志即可见输出
         let build_log = self.paths.log_file(profile, "build");
         if let Ok(mut f) = crate::logs::ensure_log_file(&build_log) {
             use std::io::Write;
-            let _ = writeln!(f, "$ {command}");
-            let _ = f.write_all(output.stdout.as_bytes());
-            let _ = f.write_all(output.stderr.as_bytes());
+            let _ = writeln!(f, "[lifecycle] {} {profile}: {command}", kind.as_str());
         }
+        Ok(CompileRun {
+            profile: profile.into(),
+            kind,
+            parser: cmd_cfg.parser.clone(),
+            timeout_ms: cmd_cfg.timeout_ms,
+            child: Some(child),
+            pid,
+            lock,
+            cancel,
+            started: Instant::now(),
+            build_log,
+            stop_timeout_ms: self.config.process.stop_timeout_ms,
+        })
+    }
+
+    /// 阶段 2（不持引擎锁）： drain 双管道并实时 tee 到编译日志，
+    /// 期间状态轮询 / 日志读取 / 其他服务启停不被阻塞。
+    pub async fn compile_wait(run: &mut CompileRun) -> Result<compile::CompileOutput> {
+        let child = run
+            .child
+            .take()
+            .ok_or_else(|| Error::Busy("compile run already waited".into()))?;
+        compile::wait_compile(
+            child,
+            run.pid,
+            run.timeout_ms,
+            run.cancel.clone(),
+            run.stop_timeout_ms,
+            Some(run.build_log.clone()),
+        )
+        .await
+    }
+
+    /// 阶段 3（持引擎锁）：落盘构建摘要、释放锁、超时判定。
+    pub fn compile_end(
+        &mut self,
+        run: CompileRun,
+        output: compile::CompileOutput,
+    ) -> Result<BuildResult> {
+        self.compiling.remove(&run.profile);
+        compile::release_lock(&run.lock);
+        let duration_ms = run.started.elapsed().as_millis() as u64;
+        let result = compile::build_result(&output, run.parser.as_deref(), duration_ms);
 
         let mut builds = compile::load_builds(&self.builds_path)?;
-        builds.insert(profile.into(), compile::summary_of(kind, &result));
+        builds.insert(run.profile.clone(), compile::summary_of(run.kind, &result));
         compile::save_builds(&self.builds_path, &builds)?;
 
         if output.timed_out {
             return Err(Error::Timeout(format!(
-                "compile {kind:?} timed out after {}ms",
-                cmd_cfg.timeout_ms
+                "compile {:?} timed out after {}ms",
+                run.kind, run.timeout_ms
             )));
         }
         Ok(result)
+    }
+
+    pub fn compile_abort(&mut self, run: CompileRun) {
+        self.compiling.remove(&run.profile);
+        compile::release_lock(&run.lock);
     }
 
     pub fn cancel_compile(&mut self, profile: &str) -> Result<bool> {
@@ -552,6 +608,7 @@ fn status_from(
     let compile_quick = cfg.compile.quick.as_ref().map(|c| c.command.clone());
     let compile_partial = cfg.compile.partial.as_ref().map(|c| c.command.clone());
     let compile_full = cfg.compile.full.as_ref().map(|c| c.command.clone());
+    let compile_package = cfg.compile.package.as_ref().map(|c| c.command.clone());
     let fast_start_command = cfg.start.fast_command.clone();
     let stop_command = cfg.stop.as_ref().and_then(|s| s.command.clone());
     let restart_command = cfg.restart.as_ref().and_then(|r| r.command.clone());
@@ -576,6 +633,7 @@ fn status_from(
             compile_quick,
             compile_partial,
             compile_full,
+            compile_package,
             last_build,
         },
         Some(r) => {
@@ -597,6 +655,7 @@ fn status_from(
                 compile_quick,
                 compile_partial,
                 compile_full,
+                compile_package,
                 last_build,
             }
         }

@@ -26,6 +26,7 @@ pub const ALL_TOOLS: &[&str] = &[
     "compile_quick",
     "compile_partial",
     "compile_full",
+    "compile_package",
     "cancel_compile",
     "get_logs",
     "watch_logs",
@@ -83,6 +84,7 @@ pub fn tool_catalog() -> Vec<ToolInfo> {
         t("compile_quick", "增量编译，返回结构化错误", "编译", "build"),
         t("compile_partial", "只编译指定模块/目录", "编译", "build"),
         t("compile_full", "清理后完整编译", "编译", "build"),
+        t("compile_package", "打包产物（app/bundle/dist 等，按 compile.package 配置）", "编译", "build"),
         t("cancel_compile", "取消进行中的编译", "编译", "build"),
         t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
         t("register_project", "注册/导入项目：探测工程并生成 lifecycle.toml", "配置", "danger"),
@@ -392,6 +394,8 @@ pub struct ConfigureServiceReq {
     pub compile_partial: Option<CompileInput>,
     /// [全量编译] Full clean compile command (e.g. 'cargo build' or { "command": "cargo build", "parser": "cargo" }).
     pub compile_full: Option<CompileInput>,
+    /// [打包] Package/artifact build command (e.g. 'cargo tauri build', 'npm run build').
+    pub compile_package: Option<CompileInput>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -535,11 +539,23 @@ impl LifeCycleServer {
             let project = self.ws.core.resolve_project(&req.project)?;
             self.check_expose(&project, "compile_quick")?;
             let engine = self.ws.core.engine(&project)?;
-            let result = engine
-                .lock()
-                .await
-                .compile(&req.profile, CompileKind::Quick, &[])
-                .await?;
+            let mut run = {
+                let mut guard = engine.lock().await;
+                guard.compile_begin(
+                    &req.profile,
+                    CompileKind::Quick,
+                    &[],
+                    std::sync::Arc::new(tokio::sync::Notify::new()),
+                )?
+            };
+            let output = match lifecycle_core::engine::Engine::compile_wait(&mut run).await {
+                Ok(o) => o,
+                Err(e) => {
+                    engine.lock().await.compile_abort(run);
+                    return Err(e);
+                }
+            };
+            let result = engine.lock().await.compile_end(run, output)?;
             Ok(serde_json::to_value(result)?)
         })
         .await
@@ -555,11 +571,23 @@ impl LifeCycleServer {
             let project = self.ws.core.resolve_project(&req.project)?;
             self.check_expose(&project, "compile_partial")?;
             let engine = self.ws.core.engine(&project)?;
-            let result = engine
-                .lock()
-                .await
-                .compile(&req.profile, CompileKind::Partial, &req.targets)
-                .await?;
+            let mut run = {
+                let mut guard = engine.lock().await;
+                guard.compile_begin(
+                    &req.profile,
+                    CompileKind::Partial,
+                    &req.targets,
+                    std::sync::Arc::new(tokio::sync::Notify::new()),
+                )?
+            };
+            let output = match lifecycle_core::engine::Engine::compile_wait(&mut run).await {
+                Ok(o) => o,
+                Err(e) => {
+                    engine.lock().await.compile_abort(run);
+                    return Err(e);
+                }
+            };
+            let result = engine.lock().await.compile_end(run, output)?;
             Ok(serde_json::to_value(result)?)
         })
         .await
@@ -575,11 +603,55 @@ impl LifeCycleServer {
             let project = self.ws.core.resolve_project(&req.project)?;
             self.check_expose(&project, "compile_full")?;
             let engine = self.ws.core.engine(&project)?;
-            let result = engine
-                .lock()
-                .await
-                .compile(&req.profile, CompileKind::Full, &[])
-                .await?;
+            let mut run = {
+                let mut guard = engine.lock().await;
+                guard.compile_begin(
+                    &req.profile,
+                    CompileKind::Full,
+                    &[],
+                    std::sync::Arc::new(tokio::sync::Notify::new()),
+                )?
+            };
+            let output = match lifecycle_core::engine::Engine::compile_wait(&mut run).await {
+                Ok(o) => o,
+                Err(e) => {
+                    engine.lock().await.compile_abort(run);
+                    return Err(e);
+                }
+            };
+            let result = engine.lock().await.compile_end(run, output)?;
+            Ok(serde_json::to_value(result)?)
+        })
+        .await
+    }
+
+    #[tool(description = "Package/build distributable artifacts (app bundle, dist, release binary) using the profile's compile.package command. Returns structured BuildResult.")]
+    async fn compile_package(
+        &self,
+        Parameters(req): Parameters<ProjectProfileReq>,
+    ) -> Result<Json<Value>, ErrorData> {
+        let input = serde_json::to_value(&req).unwrap_or_default();
+        self.traced("compile_package", input, async {
+            let project = self.ws.core.resolve_project(&req.project)?;
+            self.check_expose(&project, "compile_package")?;
+            let engine = self.ws.core.engine(&project)?;
+            let mut run = {
+                let mut guard = engine.lock().await;
+                guard.compile_begin(
+                    &req.profile,
+                    CompileKind::Package,
+                    &[],
+                    std::sync::Arc::new(tokio::sync::Notify::new()),
+                )?
+            };
+            let output = match lifecycle_core::engine::Engine::compile_wait(&mut run).await {
+                Ok(o) => o,
+                Err(e) => {
+                    engine.lock().await.compile_abort(run);
+                    return Err(e);
+                }
+            };
+            let result = engine.lock().await.compile_end(run, output)?;
             Ok(serde_json::to_value(result)?)
         })
         .await
@@ -716,7 +788,7 @@ impl LifeCycleServer {
         .await
     }
 
-    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 7 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, plus workdir, env, ready_port, ready_pattern. Omitted fields are unchanged; empty string (0 for port/timeout) clears an optional field. Preserves existing formatting and reloads hot.")]
+    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 8 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, [打包] compile_package, plus workdir, env, ready_port, ready_pattern. Omitted fields are unchanged; empty string (0 for port/timeout) clears an optional field. Preserves existing formatting and reloads hot.")]
     async fn configure_service(
         &self,
         Parameters(req): Parameters<ConfigureServiceReq>,
@@ -742,6 +814,7 @@ impl LifeCycleServer {
                 compile_quick: req.compile_quick.map(|s| s.into_parts()),
                 compile_partial: req.compile_partial.map(|s| s.into_parts()),
                 compile_full: req.compile_full.map(|s| s.into_parts()),
+                compile_package: req.compile_package.map(|s| s.into_parts()),
             };
             lifecycle_core::config::update_profile(&path, &req.profile, &patch)?;
             let expose = {

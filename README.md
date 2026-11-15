@@ -281,6 +281,7 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 | `stop_project` | Graceful process-group stop | process |
 | `restart_project` | Restart, optionally recompiling first | process |
 | `compile_quick` / `compile_partial` / `compile_full` | Three compile granularities, structured results | build |
+| `compile_package` | Package distributable artifacts (app bundle / dist) via `compile.package`; output streams live to the build log | build |
 | `cancel_compile` | Cancel an in-progress compile | build |
 | `reload_config` | Reload lifecycle.toml | danger, **hidden by default** |
 | `register_project` | Register/import a project: detect stack, generate lifecycle.toml, hot-load | config |

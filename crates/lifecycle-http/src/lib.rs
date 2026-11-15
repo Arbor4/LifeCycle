@@ -320,6 +320,8 @@ struct AddServiceBody {
     #[serde(default)]
     compile_full: Option<String>,
     #[serde(default)]
+    compile_package: Option<String>,
+    #[serde(default)]
     workdir: Option<String>,
     #[serde(default)]
     ready_port: Option<u16>,
@@ -392,6 +394,7 @@ async fn add_service(
                 compile_quick: body.compile_quick.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
                 compile_partial: body.compile_partial.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
                 compile_full: body.compile_full.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
+                compile_package: body.compile_package.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
             };
             lifecycle_core::config::update_profile(&path, &name, &patch)?;
             let expose = {
@@ -426,6 +429,8 @@ struct UpdateServiceBody {
     compile_partial: Option<String>,
     #[serde(default)]
     compile_full: Option<String>,
+    #[serde(default)]
+    compile_package: Option<String>,
     #[serde(default)]
     workdir: Option<String>,
     #[serde(default)]
@@ -481,6 +486,7 @@ async fn update_service_profile(
                 compile_quick: body.compile_quick.map(|c| (c, None)),
                 compile_partial: body.compile_partial.map(|c| (c, None)),
                 compile_full: body.compile_full.map(|c| (c, None)),
+                compile_package: body.compile_package.map(|c| (c, None)),
             };
             lifecycle_core::config::update_profile(&path, &profile, &patch)?;
             let expose = {
@@ -915,8 +921,18 @@ async fn compile_profile(
     traced(&state, "compile", json!({"project": project, "profile": profile, "kind": body.kind, "targets": body.targets}), async {
         let kind = CompileKind::parse(&body.kind)?;
         let engine = state.ws.engine(&project)?;
-        let mut guard = engine.lock().await;
-        let result = guard.compile(&profile, kind, &body.targets).await?;
+        let mut run = {
+            let mut guard = engine.lock().await;
+            guard.compile_begin(&profile, kind, &body.targets, Arc::new(tokio::sync::Notify::new()))?
+        };
+        let output = match lifecycle_core::engine::Engine::compile_wait(&mut run).await {
+            Ok(o) => o,
+            Err(e) => {
+                engine.lock().await.compile_abort(run);
+                return Err(e);
+            }
+        };
+        let result = engine.lock().await.compile_end(run, output)?;
         Ok(result)
     })
     .await
@@ -994,14 +1010,12 @@ async fn get_logs(
     Query(q): Query<LogsQuery>,
 ) -> ApiResult {
     traced(&state, "get_logs", json!({"project": project, "profile": profile, "source": q.source, "lines": q.lines, "filter": q.filter, "since": q.since}), async {
-        let engine = state.ws.engine(&project)?;
-        let page = engine.lock().await.logs(
-            &profile,
-            &q.source,
-            q.lines,
-            q.filter.as_deref(),
-            q.since,
-        )?;
+        let hub = state.ws.hub(&project)?;
+        let re = lifecycle_core::logs::compile_filter(q.filter.as_deref())?;
+        let page = match q.since {
+            Some(cursor) => hub.read_since(&profile, &q.source, cursor, re.as_ref())?,
+            None => hub.tail(&profile, &q.source, q.lines, re.as_ref())?,
+        };
         Ok(json!({"lines": page.lines, "nextCursor": page.next_cursor}))
     })
     .await
@@ -1012,16 +1026,13 @@ async fn logs_stream(
     Path((project, profile)): Path<(String, String)>,
     Query(q): Query<LogsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let engine = state.ws.engine(&project)?;
+    let hub = state.ws.hub(&project)?;
     let cursor = q.since.unwrap_or(0);
     let stream = async_stream::stream! {
         let mut cursor = cursor;
         loop {
             tokio::time::sleep(Duration::from_millis(250)).await;
-            let page = {
-                let guard = engine.lock().await;
-                guard.logs(&profile, &q.source, 0, None, Some(cursor))
-            };
+            let page = hub.read_since(&profile, &q.source, cursor, None);
             match page {
                 Ok(page) => {
                     cursor = page.next_cursor;
@@ -1129,6 +1140,7 @@ async fn save_config(
                 guard.mcp_expose().to_vec()
             };
             state.ws.set_expose(&project, expose);
+            state.ws.forget_hub(&project);
             Ok(json!({"ok": true, "path": path}))
         },
     )
@@ -1147,6 +1159,7 @@ async fn reload_config(
             guard.mcp_expose().to_vec()
         };
         state.ws.set_expose(&project, expose);
+        state.ws.forget_hub(&project);
         Ok(json!({"ok": true}))
     })
     .await
@@ -1276,8 +1289,7 @@ async fn reveal_log(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RevealRequest>,
 ) -> ApiResult {
-    let engine = state.ws.engine(&req.project)?;
-    let path = engine.lock().await.log_file(&req.profile, &req.source);
+    let path = state.ws.hub(&req.project)?.path(&req.profile, &req.source);
     #[cfg(target_os = "macos")]
     let mut cmd = {
         let mut c = std::process::Command::new("open");

@@ -86,6 +86,7 @@ pub struct CompileConfig {
     pub quick: Option<CompileCommand>,
     pub partial: Option<CompileCommand>,
     pub full: Option<CompileCommand>,
+    pub package: Option<CompileCommand>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -249,6 +250,7 @@ pub struct ProfilePatch {
     pub compile_quick: Option<(String, Option<String>)>,
     pub compile_partial: Option<(String, Option<String>)>,
     pub compile_full: Option<(String, Option<String>)>,
+    pub compile_package: Option<(String, Option<String>)>,
 }
 
 fn ensure_table<'a>(doc: &'a mut toml_edit::DocumentMut, keys: &[&str]) -> &'a mut toml_edit::Table {
@@ -402,6 +404,7 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         ("quick", &patch.compile_quick),
         ("partial", &patch.compile_partial),
         ("full", &patch.compile_full),
+        ("package", &patch.compile_package),
     ] {
         if let Some((cmd, parser)) = spec {
             if cmd.trim().is_empty() {

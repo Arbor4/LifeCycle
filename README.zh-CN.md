@@ -278,6 +278,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | `stop_project` | 进程组优雅停止 | 进程 |
 | `restart_project` | 重启，可选先 quick 编译 | 进程 |
 | `compile_quick` / `compile_partial` / `compile_full` | 三档编译，返回结构化结果 | 编译 |
+| `compile_package` | 按 `compile.package` 打包产物（app bundle / dist）；输出实时写入编译日志 | 编译 |
 | `cancel_compile` | 取消进行中的编译 | 编译 |
 | `reload_config` | 重载 lifecycle.toml | 高危，**默认不暴露** |
 | `register_project` | 注册/导入项目：探测工程、生成 lifecycle.toml、热加载 | 配置 |

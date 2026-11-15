@@ -13,6 +13,7 @@ const FORM_KEYS = [
   "compile_quick",
   "compile_partial",
   "compile_full",
+  "compile_package",
   "workdir",
   "ready_port",
 ];
@@ -26,6 +27,7 @@ function seedForm(c) {
     compile_quick: c?.compile_quick || "",
     compile_partial: c?.compile_partial || "",
     compile_full: c?.compile_full || "",
+    compile_package: c?.compile_package || "",
     workdir: c?.workdir || "",
     ready_port: c?.port ? String(c.port) : "",
   };
@@ -190,6 +192,7 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
             compile_quick: form.compile_quick.trim(),
             compile_partial: form.compile_partial.trim(),
             compile_full: form.compile_full.trim(),
+            compile_package: form.compile_package.trim(),
             workdir: form.workdir.trim(),
             ready_port: form.ready_port ? Number(form.ready_port) : 0,
           }),
@@ -393,6 +396,19 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
                 value={form.compile_full}
                 onChange={(e) => updateField("compile_full", e.target.value)}
                 placeholder={t("例如 npm run build / cargo build")}
+              />
+            </label>
+
+            <label className="block md:col-span-2">
+              <span className="field-label flex items-center gap-1.5">
+                <Icon name="pkg" size={12} className="text-[var(--vio)]" />
+                {t("打包命令（可选，产物构建：app/bundle/dist）")}
+              </span>
+              <input
+                className={inputCls}
+                value={form.compile_package}
+                onChange={(e) => updateField("compile_package", e.target.value)}
+                placeholder={t("例如 cargo tauri build / npm run build")}
               />
             </label>
 

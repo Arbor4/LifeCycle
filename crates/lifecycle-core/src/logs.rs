@@ -184,6 +184,11 @@ impl LogHub {
     }
 }
 
+/// Compile an optional user filter regex (shared by HTTP log endpoints).
+pub fn compile_filter(filter: Option<&str>) -> Result<Option<Regex>> {
+    Ok(filter.map(Regex::new).transpose()?)
+}
+
 fn split_lines(content: &str, base: u64) -> Vec<LogLine> {
     let mut lines = Vec::new();
     let mut offset = base;

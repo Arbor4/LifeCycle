@@ -26,9 +26,10 @@ fn prefix_patterns_and_explicit_reload() {
     let expose = v(&["compile_*", "reload_config"]);
     assert!(tool_matches(&expose, "compile_quick"));
     assert!(tool_matches(&expose, "compile_partial"));
+    assert!(tool_matches(&expose, "compile_package"));
     assert!(tool_matches(&expose, "reload_config"));
     assert!(!tool_matches(&expose, "start_project"));
-    assert_eq!(effective_tools(&expose).len(), 4);
+    assert_eq!(effective_tools(&expose).len(), 5);
 }
 
 #[test]

@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncReadExt;
 use tokio::process::Child;
 use tokio::sync::Notify;
 
@@ -18,6 +17,7 @@ pub enum CompileKind {
     Quick,
     Partial,
     Full,
+    Package,
 }
 
 impl CompileKind {
@@ -26,6 +26,7 @@ impl CompileKind {
             CompileKind::Quick => "quick",
             CompileKind::Partial => "partial",
             CompileKind::Full => "full",
+            CompileKind::Package => "package",
         }
     }
 
@@ -34,6 +35,7 @@ impl CompileKind {
             "quick" => Ok(CompileKind::Quick),
             "partial" => Ok(CompileKind::Partial),
             "full" => Ok(CompileKind::Full),
+            "package" => Ok(CompileKind::Package),
             _ => Err(Error::NotFound(format!("compile kind '{s}'"))),
         }
     }
@@ -68,6 +70,22 @@ pub struct BuildSummary {
     pub error_count: usize,
     pub warning_count: usize,
     pub finished_at_ms: u64,
+}
+
+/// In-flight compile handed between the three engine phases so the engine
+/// mutex is NOT held while the build runs (status/log reads stay responsive).
+pub struct CompileRun {
+    pub profile: String,
+    pub kind: CompileKind,
+    pub parser: Option<String>,
+    pub timeout_ms: u64,
+    pub child: Option<tokio::process::Child>,
+    pub pid: u32,
+    pub lock: PathBuf,
+    pub cancel: Arc<Notify>,
+    pub started: std::time::Instant,
+    pub build_log: PathBuf,
+    pub stop_timeout_ms: u64,
 }
 
 pub struct CompileControl {
@@ -144,24 +162,53 @@ pub fn spawn_compile(
 }
 
 /// Wait for the compile with timeout and cancellation; on either, SIGTERM→SIGKILL the group.
+/// When `live_log` is set, output is tee'd to that file line-by-line as it arrives
+/// (both pipes drained concurrently so a chatty stderr cannot deadlock the child).
 pub async fn wait_compile(
     mut child: Child,
     pid: u32,
     timeout_ms: u64,
     cancel: Arc<Notify>,
     stop_timeout_ms: u64,
+    live_log: Option<std::path::PathBuf>,
 ) -> Result<CompileOutput> {
     let mut stdout_pipe = child.stdout.take();
     let mut stderr_pipe = child.stderr.take();
     let reader = tokio::spawn(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
         let mut out = String::new();
         let mut err = String::new();
-        if let Some(p) = stdout_pipe.as_mut() {
-            let _ = p.read_to_string(&mut out).await;
-        }
-        if let Some(p) = stderr_pipe.as_mut() {
-            let _ = p.read_to_string(&mut err).await;
-        }
+        let log_out = live_log.clone();
+        let log_err = live_log;
+        let so = async {
+            use std::io::Write;
+            let mut f = log_out.as_ref().and_then(|p| crate::logs::ensure_log_file(p).ok());
+            if let Some(p) = stdout_pipe.as_mut() {
+                let mut lines = BufReader::new(p).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    out.push_str(&line);
+                    out.push('\n');
+                    if let Some(f) = f.as_mut() {
+                        let _ = writeln!(f, "{line}");
+                    }
+                }
+            }
+        };
+        let se = async {
+            use std::io::Write;
+            let mut f = log_err.as_ref().and_then(|p| crate::logs::ensure_log_file(p).ok());
+            if let Some(p) = stderr_pipe.as_mut() {
+                let mut lines = BufReader::new(p).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    err.push_str(&line);
+                    err.push('\n');
+                    if let Some(f) = f.as_mut() {
+                        let _ = writeln!(f, "{line}");
+                    }
+                }
+            }
+        };
+        tokio::join!(so, se);
         (out, err)
     });
 

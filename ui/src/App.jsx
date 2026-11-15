@@ -73,6 +73,7 @@ export default function App() {
   const isBusy = !!busy[key];
   const running = current?.state === "running" || current?.state === "starting";
   const compiling = busy[key] === "compile";
+  const packaging = busy[key] === "package";
 
   const openDetail = useCallback((project, profile, source = "run") => {
     setSel({ project, profile });
@@ -159,17 +160,25 @@ export default function App() {
       const k = `${selRef.current.project}/${selRef.current.profile}`;
       setBusy((b) => ({ ...b, [k]: name }));
       setMessage(null);
+      if (name === "compile" || name === "package") setLogSource("build");
       try {
         const r = await fn();
         if (r && Array.isArray(r.errors)) {
           setErrorsByProfile((prev) => ({ ...prev, [k]: r }));
           if (!r.success && r.errors.length) setTab("errors");
+          const pkg = name === "package";
           pushToast(
             r.cancelled
-              ? tr("编译已取消")
+              ? pkg
+                ? tr("打包已取消")
+                : tr("编译已取消")
               : r.success
-                ? tr("编译成功 · {ms}ms", { ms: r.duration_ms })
-                : tr("编译失败 · {n} 错误", { n: r.errors.length }),
+                ? pkg
+                  ? tr("打包成功 · {ms}ms", { ms: r.duration_ms })
+                  : tr("编译成功 · {ms}ms", { ms: r.duration_ms })
+                : pkg
+                  ? tr("打包失败 · {n} 错误", { n: r.errors.length })
+                  : tr("编译失败 · {n} 错误", { n: r.errors.length }),
             { kind: r.success ? "success" : "error" }
           );
         } else if (name === "start") {
@@ -203,6 +212,7 @@ export default function App() {
   const restart = () => act("restart", () => post("/restart", { wait: true }));
   const compileQuick = () => act("compile", () => post("/compile", { kind: "quick" }));
   const compileFull = () => act("compile", () => post("/compile", { kind: "full" }));
+  const compilePackage = () => act("package", () => post("/compile", { kind: "package" }));
   const compilePartial = (targets) => {
     setShowPartial(false);
     act("compile", () => post("/compile", { kind: "partial", targets }));
@@ -359,6 +369,32 @@ export default function App() {
                           {t("全量")}
                         </button>
                       </>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                      {t("产物")}
+                    </span>
+                    {packaging ? (
+                      <button className="btn btn-danger btn-sm" onClick={cancelCompile} title={t("取消正在进行的打包")}>
+                        <span className="spinner" />
+                        {t("取消打包…")}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        disabled={isBusy || !current?.compile_package}
+                        onClick={compilePackage}
+                        title={
+                          current?.compile_package
+                            ? t("打包产物（app/bundle/dist，按 compile.package 配置）")
+                            : t("未配置打包命令（compile.package）")
+                        }
+                      >
+                        <Icon name="pkg" size={12} />
+                        {t("打包")}
+                      </button>
                     )}
                   </div>
                 </div>
