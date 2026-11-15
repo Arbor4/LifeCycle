@@ -198,7 +198,7 @@ export default function LogPanel({ project, profile, maxLines = 5000, initialSou
         <div className="relative">
           <Icon name="search" size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
-            className="input w-36 pl-7 pr-6"
+            className="input w-36 pl-7! pr-6!"
             placeholder={t("搜索…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}

@@ -330,27 +330,31 @@ html.theme-switching *::after {
 }
 
 /* ── 输入 ─────────────────────────────────────────────────── */
-.input {
-  background: var(--well);
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  padding: 6px 10px;
-  color: var(--txt);
-  font-size: 13px;
-  outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-.input:focus {
-  border-color: var(--blu);
-  box-shadow: 0 0 0 3px var(--blu-soft);
-}
-.input::placeholder {
-  color: var(--dim);
-}
-select.input {
-  cursor: pointer;
+/* 置于 components 层：Tailwind utilities（pl-7、text-xs、bg-…）可正常覆盖，
+   避免非分层 CSS 永远压过工具类导致图标与文字重叠等布局问题 */
+@layer components {
+  .input {
+    background: var(--well);
+    border: 1px solid var(--line2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: var(--txt);
+    font-size: 13px;
+    outline: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+  .input:focus {
+    border-color: var(--blu);
+    box-shadow: 0 0 0 3px var(--blu-soft);
+  }
+  .input::placeholder {
+    color: var(--dim);
+  }
+  select.input {
+    cursor: pointer;
+  }
 }
 .field-label {
   display: block;
