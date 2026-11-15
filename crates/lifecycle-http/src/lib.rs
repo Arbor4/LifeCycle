@@ -193,6 +193,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/mcp/client-config", post(mcp_admin::client_config))
         .route("/api/diagnostics", get(get_diagnostics))
         .route("/api/open-editor", post(open_editor))
+        .route("/api/open-url", post(open_url))
         .route("/api/reveal-log", post(reveal_log))
         .route("/api/events", get(events_stream))
         .route("/api/groups", get(list_groups).post(create_group))
@@ -678,6 +679,52 @@ async fn open_editor(
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| Error::Other(format!("failed to launch editor '{command}': {e}")))?;
+    Ok(Json(json!({"ok": true})))
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenUrlRequest {
+    url: String,
+}
+
+/// Open an http(s) link from a log line in the default browser.
+/// The URL is passed as a single argv entry (never through a shell) and is
+/// restricted to http/https without whitespace or quote characters.
+async fn open_url(Json(req): Json<OpenUrlRequest>) -> ApiResult {
+    let url = req.url.trim();
+    let ok_scheme = url.starts_with("http://") || url.starts_with("https://");
+    let clean = url.len() <= 2048
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control() || "\"'`<>\\".contains(c));
+    let host = url
+        .split_once("://")
+        .map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or(""))
+        .unwrap_or("");
+    if !ok_scheme || !clean || host.is_empty() {
+        return Err(ApiError(Error::Config(format!("refusing to open URL: {url}"))));
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("explorer");
+        c.arg(url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| Error::Other(format!("failed to open URL: {e}")))?;
     Ok(Json(json!({"ok": true})))
 }
 

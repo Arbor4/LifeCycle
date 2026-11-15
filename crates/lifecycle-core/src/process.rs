@@ -69,7 +69,12 @@ impl StateStore {
 
 /// Spawn detached in its own process group; stdout/stderr go straight to the run log
 /// so the process keeps running after this CLI invocation exits.
-pub fn spawn(profile_name: &str, profile: &Profile, paths: &ProjectPaths) -> Result<(RunRecord, Child)> {
+pub fn spawn(
+    profile_name: &str,
+    profile: &Profile,
+    paths: &ProjectPaths,
+    force_color: bool,
+) -> Result<(RunRecord, Child)> {
     let log_path = paths.log_file(profile_name, "run");
     let log_start = std::fs::metadata(&log_path).map(|m| m.len()).unwrap_or(0);
     let out = ensure_log_file(&log_path)?;
@@ -80,6 +85,20 @@ pub fn spawn(profile_name: &str, profile: &Profile, paths: &ProjectPaths) -> Res
     // GUI（Finder/launchd）启动时 PATH 极简，补上常见工具链，否则 npm/cargo 找不到。
     #[cfg(unix)]
     cmd.env("PATH", toolchain_path());
+    if force_color {
+        // 管道不是 TTY，多数工具会关掉颜色；显式要求保留 ANSI。
+        for (k, v) in [
+            ("FORCE_COLOR", "1"),
+            ("CLICOLOR_FORCE", "1"),
+            ("CARGO_TERM_COLOR", "always"),
+            ("SPRING_OUTPUT_ANSI_ENABLED", "always"),
+        ] {
+            cmd.env(k, v);
+        }
+        if std::env::var("TERM").is_err() {
+            cmd.env("TERM", "xterm-256color");
+        }
+    }
     cmd.envs(&profile.env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(out))
@@ -453,7 +472,7 @@ ready_timeout_ms = 5000
         let (_dir, config, paths) =
             fixture("printf 'booting\\nREADY\\n'; sleep 30", Some("READY"));
         let profile = config.profile("default").unwrap();
-        let (record, mut child) = spawn("default", profile, &paths).unwrap();
+        let (record, mut child) = spawn("default", profile, &paths, false).unwrap();
         assert!(is_alive(record.pid));
 
         let hub = LogHub::new(&paths.log_dir);
@@ -477,7 +496,7 @@ ready_timeout_ms = 5000
     async fn detects_early_exit() {
         let (_dir, config, paths) = fixture("echo boom; exit 3", Some("READY"));
         let profile = config.profile("default").unwrap();
-        let (record, mut child) = spawn("default", profile, &paths).unwrap();
+        let (record, mut child) = spawn("default", profile, &paths, false).unwrap();
         let hub = LogHub::new(&paths.log_dir);
         let outcome = wait_ready(&mut child, &record, &profile.start, &hub, "default", 100)
             .await
@@ -491,7 +510,7 @@ ready_timeout_ms = 5000
     async fn stop_escalates_to_sigkill() {
         let (_dir, config, paths) = fixture("trap '' TERM; sleep 30", None);
         let profile = config.profile("default").unwrap();
-        let (record, mut child) = spawn("default", profile, &paths).unwrap();
+        let (record, mut child) = spawn("default", profile, &paths, false).unwrap();
         // Let the shell install the trap.
         tokio::time::sleep(Duration::from_millis(300)).await;
         let code = stop_child(&mut child, record.pid, 500).await.unwrap();
@@ -505,7 +524,7 @@ ready_timeout_ms = 5000
         let profile = config.profile("default").unwrap();
         let mut start = profile.start.clone();
         start.ready_timeout_ms = 600;
-        let (record, mut child) = spawn("default", profile, &paths).unwrap();
+        let (record, mut child) = spawn("default", profile, &paths, false).unwrap();
         let hub = LogHub::new(&paths.log_dir);
         let outcome = wait_ready(&mut child, &record, &start, &hub, "default", 100)
             .await

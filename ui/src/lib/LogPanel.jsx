@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, BASE, profilePath } from "./api.js";
 import { levelOf } from "./format.js";
+import { pushToast } from "./toast.js";
+import { useTheme } from "./theme.js";
+import { LogContent } from "./logHighlight.jsx";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
 
 const ROW = 20;
 const CAP = 100000;
+const COLOR_KEY = "lifecycle-log-color";
 
 export default function LogPanel({ project, profile, maxLines = 5000 }) {
   const [source, setSource] = useState("run");
@@ -15,11 +19,44 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
   const [search, setSearch] = useState("");
   const [matchPos, setMatchPos] = useState(-1);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [colorOn, setColorOn] = useState(() => {
+    try {
+      return localStorage.getItem(COLOR_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(400);
   const container = useRef(null);
   const autoRef = useRef(autoScroll);
   autoRef.current = autoScroll;
+  const { resolved: theme } = useTheme();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLOR_KEY, colorOn ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [colorOn]);
+
+  const openLink = useCallback((link) => {
+    if (link.file) {
+      api("/api/open-editor", {
+        method: "POST",
+        body: JSON.stringify({ file: link.file, line: link.line, col: link.col ?? 1 }),
+      }).catch((e) => pushToast(e.message, { kind: "error" }));
+      return;
+    }
+    if ("__TAURI_INTERNALS__" in window) {
+      api("/api/open-url", { method: "POST", body: JSON.stringify({ url: link.url }) }).catch((e) =>
+        pushToast(e.message, { kind: "error" })
+      );
+    } else {
+      window.open(link.url, "_blank", "noopener");
+    }
+  }, []);
 
   useEffect(() => {
     const el = container.current;
@@ -152,6 +189,14 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
           {matches.length ? `${matchPos + 1}/${matches.length}` : `${visible.length} 行`}
         </span>
         <span className="flex-1" />
+        <Checkbox
+          size="sm"
+          tone="cyn"
+          checked={colorOn}
+          onChange={setColorOn}
+          label="颜色"
+          title="解析 ANSI 终端色与 Spring/Vite 风格语义高亮；子进程需重启后才会输出 ANSI（[logs].color）"
+        />
         <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label="自动滚动" />
         <button className="btn btn-sm" onClick={() => setLines([])}>
           <Icon name="x" size={12} />
@@ -174,14 +219,14 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
         <div style={{ height: visible.length * ROW, position: "relative" }}>
-          <div style={{ position: "absolute", top: start * ROW, left: 0, right: 0 }}>
+          <div style={{ position: "absolute", top: start * ROW, left: 0, minWidth: "100%", width: "max-content" }}>
             {slice.map((l, i) => (
               <div
                 key={start + i}
-                className={`log-line lv-${levelOf(l.text)}`}
+                className={`log-line ${colorOn ? "" : `lv-${levelOf(l.text)}`}`}
                 style={start + i === currentMatch ? { background: "var(--amb-soft)" } : undefined}
               >
-                {l.text}
+                <LogContent text={l.text} color={colorOn} theme={theme} onOpen={openLink} />
               </div>
             ))}
           </div>

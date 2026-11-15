@@ -745,8 +745,6 @@ input[type="checkbox"]:not(.cb-input) {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 12px;
   white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
   padding: 0 10px;
 }
 .lv-error {
@@ -757,6 +755,17 @@ input[type="checkbox"]:not(.cb-input) {
 }
 .lv-info {
   color: var(--log-info);
+}
+.log-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 55%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.log-link:hover {
+  text-decoration-color: currentColor;
+  background: color-mix(in oklab, currentColor 12%, transparent);
 }
 
 .toast {

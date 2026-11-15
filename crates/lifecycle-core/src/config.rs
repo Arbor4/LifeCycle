@@ -82,6 +82,14 @@ pub struct LogsConfig {
     pub buffer_lines: usize,
     #[serde(default = "default_log_dir")]
     pub dir: String,
+    /// Force ANSI color in child output (FORCE_COLOR / CARGO_TERM_COLOR /
+    /// SPRING_OUTPUT_ANSI_ENABLED …) so piped logs keep terminal colors.
+    #[serde(default = "default_color")]
+    pub color: bool,
+}
+
+fn default_color() -> bool {
+    true
 }
 
 impl Default for LogsConfig {
@@ -89,6 +97,7 @@ impl Default for LogsConfig {
         Self {
             buffer_lines: default_buffer_lines(),
             dir: default_log_dir(),
+            color: default_color(),
         }
     }
 }

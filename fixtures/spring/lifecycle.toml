@@ -1,0 +1,19 @@
+# 模拟 Spring Boot 控制台日志：default 无 ANSI（语义高亮），ansi 带 SGR（终端色解析）。
+[project]
+name = "fixture-spring"
+
+[profiles.default.start]
+command = "sh emit.sh plain"
+ready_pattern = "Started DemoApplication"
+ready_timeout_ms = 15000
+
+[profiles.ansi.start]
+command = "sh emit.sh ansi"
+ready_pattern = "Started DemoApplication"
+ready_timeout_ms = 15000
+
+[logs]
+buffer_lines = 2000
+
+[process]
+stop_timeout_ms = 2000

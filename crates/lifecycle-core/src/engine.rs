@@ -272,7 +272,8 @@ impl Engine {
             }
         }
 
-        let (mut record, mut child) = process::spawn(profile, &profile_cfg, &self.paths)?;
+        let (mut record, mut child) =
+            process::spawn(profile, &profile_cfg, &self.paths, self.config.logs.color)?;
         let pid = record.pid;
         records.insert(profile.into(), record.clone());
         self.store.save(&records)?;
