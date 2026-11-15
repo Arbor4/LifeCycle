@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { pushToast } from "./toast.js";
+import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Modal from "./Modal.jsx";
 import Checkbox from "./Checkbox.jsx";
 
 export default function PartialModal({ project, profile, onClose, onSubmit }) {
+  const { t } = useI18n();
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [custom, setCustom] = useState("");
@@ -54,21 +55,21 @@ export default function PartialModal({ project, profile, onClose, onSubmit }) {
 
   return (
     <Modal
-      title={`部分编译 · ${project}/${profile}`}
+      title={t("部分编译 · {project}/{profile}", { project, profile })}
       icon="compile"
       tone="blu"
       width={520}
       onClose={onClose}
-      subtitle="选择模块/目录，或直接输入目标（逗号分隔）。只编译选中的部分，速度远快于完整编译。"
+      subtitle={t("选择模块/目录，或直接输入目标（逗号分隔）。只编译选中的部分，速度远快于完整编译。")}
       footer={
         <>
-          <span className="mr-auto text-xs text-[var(--dim)]">已选 {targets.length} 个目标</span>
+          <span className="mr-auto text-xs text-[var(--dim)]">{t("已选 {n} 个目标", { n: targets.length })}</span>
           <button className="btn" onClick={onClose}>
-            取消
+            {t("取消")}
           </button>
           <button className="btn btn-primary" disabled={targets.length === 0} onClick={submit}>
             <Icon name="compile" size={12} />
-            编译所选
+            {t("编译所选")}
           </button>
         </>
       }
@@ -80,13 +81,13 @@ export default function PartialModal({ project, profile, onClose, onSubmit }) {
             checked={allChecked}
             indeterminate={someChecked && !allChecked}
             onChange={() => setSelected(allChecked ? new Set() : new Set(modules))}
-            label="全选模块"
+            label={t("全选模块")}
           />
         </div>
       )}
       <div className="well max-h-60 overflow-y-auto p-2">
         {modules.length === 0 ? (
-          <div className="p-2 text-sm text-[var(--dim)]">未发现模块目录，可在下方手动输入目标。</div>
+          <div className="p-2 text-sm text-[var(--dim)]">{t("未发现模块目录，可在下方手动输入目标。")}</div>
         ) : (
           modules.map((m) => (
             <div className="cb-row" key={m}>
@@ -97,7 +98,7 @@ export default function PartialModal({ project, profile, onClose, onSubmit }) {
         )}
       </div>
       <label className="mt-3 block">
-        <span className="field-label">自定义目标</span>
+        <span className="field-label">{t("自定义目标")}</span>
         <input
           className="input mono w-full"
           placeholder="mod-a,mod-b"

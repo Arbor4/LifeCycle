@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { STATE_LABEL, uptime } from "./format.js";
+import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 
 const STATE_COLOR = {
@@ -11,10 +12,11 @@ const STATE_COLOR = {
 };
 
 export default function StatusCard({ status, project }) {
+  const { t } = useI18n();
   const [, setNow] = useState(Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const t2 = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t2);
   }, []);
 
   const color = STATE_COLOR[status.state] ?? "var(--mut)";
@@ -31,7 +33,7 @@ export default function StatusCard({ status, project }) {
           style={{ borderColor: "var(--line2)", background: "var(--bg2)", color }}
         >
           <span className={`dot dot-${status.state}`} />
-          {STATE_LABEL[status.state] ?? status.state}
+          {t(STATE_LABEL[status.state] ?? status.state)}
         </span>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--mut)]">
@@ -39,25 +41,25 @@ export default function StatusCard({ status, project }) {
           PID <span className="mono text-[var(--txt)]">{status.pid ?? "—"}</span>
         </span>
         <span>
-          运行时长 <span className="mono text-[var(--txt)]">{uptime(status.uptime_ms)}</span>
+          {t("运行时长")} <span className="mono text-[var(--txt)]">{uptime(status.uptime_ms)}</span>
         </span>
         <span>
-          端口 <span className="mono text-[var(--txt)]">{status.port ?? "—"}</span>
+          {t("端口")} <span className="mono text-[var(--txt)]">{status.port ?? "—"}</span>
         </span>
         {status.last_build ? (
           <span className="inline-flex items-center gap-1.5">
-            最近编译
+            {t("最近编译")}
             <span className="mono inline-flex items-center gap-1" style={{ color: status.last_build.success ? "var(--grn)" : "var(--red)" }}>
               <Icon name={status.last_build.success ? "check" : "x"} size={11} />
               {status.last_build.kind}
             </span>
             <span className="text-[var(--dim)]">
-              {status.last_build.duration_ms}ms · {status.last_build.error_count} 错误
+              {t("{ms}ms · {n} 错误", { ms: status.last_build.duration_ms, n: status.last_build.error_count })}
             </span>
           </span>
         ) : (
           <span>
-            最近编译 <span className="text-[var(--dim)]">—</span>
+            {t("最近编译")} <span className="text-[var(--dim)]">—</span>
           </span>
         )}
       </div>

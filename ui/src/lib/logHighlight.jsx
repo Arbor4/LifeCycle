@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useI18n } from "./i18n.js";
 
 /* ── 调色板：ANSI 16 色在亮暗两套主题下都保证可读 ───────────── */
 const BASIC = {
@@ -233,6 +234,7 @@ export function tokenize(text, color, theme) {
 }
 
 export function LogContent({ text, color = true, theme = "dark", onOpen }) {
+  const { t } = useI18n();
   const segs = useMemo(() => tokenize(text, color, theme), [text, color, theme]);
   return (
     <>
@@ -244,8 +246,8 @@ export function LogContent({ text, color = true, theme = "dark", onOpen }) {
             style={s.style ?? undefined}
             title={
               s.url.file
-                ? `⌘/Ctrl + 点击在编辑器中打开 ${s.url.file}:${s.url.line}`
-                : `⌘/Ctrl + 点击打开 ${s.url.url}`
+                ? t("⌘/Ctrl + 点击在编辑器中打开 {file}:{line}", { file: s.url.file, line: s.url.line })
+                : t("⌘/Ctrl + 点击打开 {url}", { url: s.url.url })
             }
             onClick={(e) => {
               if (e.ctrlKey || e.metaKey) {

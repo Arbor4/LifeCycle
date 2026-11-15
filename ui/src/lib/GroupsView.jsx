@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { pushToast } from "./toast.js";
 import { STATE_LABEL } from "./format.js";
+import { useI18n } from "./i18n.js";
 import GroupModal from "./GroupModal.jsx";
 import Icon from "./Icon.jsx";
 
 export default function GroupsView({ projects, onOpen }) {
+  const { t } = useI18n();
   const [groups, setGroups] = useState([]);
   const [busy, setBusy] = useState({});
   const [results, setResults] = useState({});
@@ -27,8 +29,8 @@ export default function GroupsView({ projects, onOpen }) {
 
   useEffect(() => {
     if (!confirming) return;
-    const t = setTimeout(() => setConfirming(null), 3000);
-    return () => clearTimeout(t);
+    const tm = setTimeout(() => setConfirming(null), 3000);
+    return () => clearTimeout(tm);
   }, [confirming]);
 
   const statusOf = (m) =>
@@ -45,12 +47,12 @@ export default function GroupsView({ projects, onOpen }) {
       });
       setResults((prev) => ({ ...prev, [g.id]: r.results }));
       const ok = r.results.filter((x) => x.ok).length;
-      const label = { start: "启动", stop: "停止", restart: "重启" }[name];
-      pushToast(`分组「${g.name}」${label}完成 ${ok}/${r.results.length}`, {
+      const label = t({ start: "启动", stop: "停止", restart: "重启" }[name]);
+      pushToast(t("分组「{name}」{label}完成 {ok}/{total}", { name: g.name, label, ok, total: r.results.length }), {
         kind: ok === r.results.length ? "success" : "error",
       });
     } catch (e) {
-      pushToast(`分组「${g.name}」: ${e.message}`, { kind: "error" });
+      pushToast(t("分组「{name}」: {err}", { name: g.name, err: e.message }), { kind: "error" });
     } finally {
       setBusy((b) => {
         const next = { ...b };
@@ -69,10 +71,10 @@ export default function GroupsView({ projects, onOpen }) {
     try {
       const removed = await api(`/api/groups/${g.id}`, { method: "DELETE" });
       await load();
-      pushToast(`已删除分组「${g.name}」`, {
+      pushToast(t("已删除分组「{name}」", { name: g.name }), {
         duration: 15000,
         action: {
-          label: "撤销",
+          label: t("撤销"),
           fn: async () => {
             try {
               await api(`/api/groups/${removed.id}`, {
@@ -80,7 +82,7 @@ export default function GroupsView({ projects, onOpen }) {
                 body: JSON.stringify({ name: removed.name, members: removed.members }),
               });
               await load();
-              pushToast(`已恢复分组「${removed.name}」`, { kind: "success" });
+              pushToast(t("已恢复分组「{name}」", { name: removed.name }), { kind: "success" });
             } catch (e) {
               pushToast(e.message, { kind: "error" });
             }
@@ -99,9 +101,11 @@ export default function GroupsView({ projects, onOpen }) {
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-3">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="group" size={16} className="text-[var(--vio)]" />
-          服务分组
+          {t("服务分组")}
         </h1>
-        <span className="text-xs text-[var(--mut)]">微服务一键启停 · {groups.length} 个分组 · {totalRunning} 个成员运行中</span>
+        <span className="text-xs text-[var(--mut)]">
+          {t("微服务一键启停 · {n} 个分组 · {r} 个成员运行中", { n: groups.length, r: totalRunning })}
+        </span>
         <span className="flex-1" />
         <button
           className="btn btn-vio"
@@ -111,7 +115,7 @@ export default function GroupsView({ projects, onOpen }) {
           }}
         >
           <Icon name="plus" />
-          新建分组
+          {t("新建分组")}
         </button>
       </div>
 
@@ -128,10 +132,10 @@ export default function GroupsView({ projects, onOpen }) {
                     style={{ background: "var(--vio)", boxShadow: "0 0 8px color-mix(in oklab, var(--vio) 70%, transparent)" }}
                   />
                   <h2 className="truncate text-sm font-semibold">{g.name}</h2>
-                  <span className="text-xs text-[var(--dim)]">{g.members.length} 个服务</span>
+                  <span className="text-xs text-[var(--dim)]">{t("{n} 个服务", { n: g.members.length })}</span>
                   <span className="flex-1" />
                   <span className={`mono text-xs ${all ? "text-[var(--grn)]" : "text-[var(--mut)]"}`}>
-                    {run}/{g.members.length} 运行中
+                    {t("{run}/{total} 运行中", { run, total: g.members.length })}
                   </span>
                 </div>
 
@@ -153,7 +157,7 @@ export default function GroupsView({ projects, onOpen }) {
                       <button
                         key={key}
                         className="chip"
-                        title={STATE_LABEL[s?.state] ?? "未知（服务已卸载）"}
+                        title={s ? t(STATE_LABEL[s.state] ?? s.state) : t("未知（服务已卸载）")}
                         onClick={() => onOpen(m.project, m.profile)}
                       >
                         <span className={`dot dot-${s?.state ?? "idle"}`} />
@@ -184,15 +188,15 @@ export default function GroupsView({ projects, onOpen }) {
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <button className="btn btn-sm btn-success" disabled={!!busy[g.id]} onClick={() => op(g, "start")}>
                     {busy[g.id] === "start" ? <span className="spinner" /> : <Icon name="play" size={12} />}
-                    一键启动
+                    {t("一键启动")}
                   </button>
                   <button className="btn btn-sm btn-danger" disabled={!!busy[g.id]} onClick={() => op(g, "stop")}>
                     {busy[g.id] === "stop" ? <span className="spinner" /> : <Icon name="stop" size={12} />}
-                    一键停止
+                    {t("一键停止")}
                   </button>
                   <button className="btn btn-sm btn-warn" disabled={!!busy[g.id]} onClick={() => op(g, "restart")}>
                     {busy[g.id] === "restart" ? <span className="spinner" /> : <Icon name="restart" size={12} />}
-                    重启
+                    {t("重启")}
                   </button>
                   <span className="flex-1" />
                   <button
@@ -203,15 +207,15 @@ export default function GroupsView({ projects, onOpen }) {
                     }}
                   >
                     <Icon name="edit" size={12} />
-                    编辑
+                    {t("编辑")}
                   </button>
                   <button
                     className={`btn btn-sm btn-ghost ${confirming === g.id ? "!text-[var(--red)]" : ""}`}
-                    title={confirming === g.id ? "再次点击确认删除" : "删除分组"}
+                    title={confirming === g.id ? t("再次点击确认删除") : t("删除分组")}
                     onClick={() => remove(g)}
                   >
                     <Icon name="trash" size={12} />
-                    {confirming === g.id ? "确认?" : "删除"}
+                    {confirming === g.id ? t("确认?") : t("删除")}
                   </button>
                 </div>
               </div>
@@ -224,9 +228,9 @@ export default function GroupsView({ projects, onOpen }) {
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--vio-soft)] text-[var(--vio)]">
               <Icon name="group" size={26} />
             </span>
-            <div className="text-sm text-[var(--mut)]">还没有分组</div>
+            <div className="text-sm text-[var(--mut)]">{t("还没有分组")}</div>
             <p className="max-w-md text-xs leading-5 text-[var(--dim)]">
-              把多个微服务编成一组（如「后端核心」= 注册中心 + 网关 + 用户服务），即可一键启动整批，按依赖顺序并行拉起。
+              {t("把多个微服务编成一组（如「后端核心」= 注册中心 + 网关 + 用户服务），即可一键启动整批，按依赖顺序并行拉起。")}
             </p>
             <button
               className="btn btn-vio btn-sm"
@@ -236,7 +240,7 @@ export default function GroupsView({ projects, onOpen }) {
               }}
             >
               <Icon name="plus" />
-              新建分组
+              {t("新建分组")}
             </button>
           </div>
         )}

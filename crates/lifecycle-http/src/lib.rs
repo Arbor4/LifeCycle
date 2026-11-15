@@ -33,6 +33,8 @@ pub struct Settings {
     pub compile_timeout_ms: u64,
     /// "system" | "light" | "dark"
     pub theme: String,
+    /// "zh" | "en"
+    pub language: String,
 }
 
 impl Default for Settings {
@@ -44,6 +46,7 @@ impl Default for Settings {
             ready_timeout_ms: 120_000,
             compile_timeout_ms: 300_000,
             theme: "system".into(),
+            language: "zh".into(),
         }
     }
 }
@@ -186,6 +189,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/projects", get(list_projects))
         .route("/api/projects/register", post(register_project))
+        .route("/api/projects/choose-directory", post(choose_directory))
+        .route("/api/projects/detect", post(detect_project))
         .route("/api/projects/{project}", delete(unregister_project))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/mcp", get(mcp_admin::info))
@@ -306,6 +311,112 @@ async fn register_project(
         Ok(json!({"project": project, "path": toml_path, "generated": generated}))
     })
     .await
+}
+
+#[derive(Debug, Deserialize)]
+struct DetectBody {
+    path: String,
+}
+
+async fn detect_project(Json(body): Json<DetectBody>) -> ApiResult {
+    let Ok(root) = std::fs::canonicalize(&body.path) else {
+        return Ok(Json(json!({ "exists": false })));
+    };
+    if !root.is_dir() {
+        return Ok(Json(json!({ "exists": false, "is_dir": false })));
+    }
+    let toml_path = root.join("lifecycle.toml");
+    let has_toml = toml_path.exists();
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "project".into());
+    let detected = lifecycle_core::detect::detect(&root);
+    Ok(Json(json!({
+        "exists": true,
+        "name": name,
+        "has_lifecycle_toml": has_toml,
+        "kind": detected.kind,
+        "start_command": detected.start_command,
+        "port": detected.ready_port,
+    })))
+}
+
+async fn choose_directory() -> ApiResult {
+    let chosen = tokio::task::spawn_blocking(|| -> Result<Option<String>, String> {
+        #[cfg(target_os = "macos")]
+        {
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg("POSIX path of (choose folder with prompt \"选择项目目录\")")
+                .output()
+                .map_err(|e| e.to_string())?;
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let clean = s.trim_end_matches('/').to_string();
+                if !clean.is_empty() {
+                    return Ok(Some(clean));
+                }
+            }
+            Ok(None)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let script = r#"
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = "选择项目目录"
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    Write-Output $dialog.SelectedPath
+}
+"#;
+            let output = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", script])
+                .output()
+                .map_err(|e| e.to_string())?;
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let clean = s.trim_end_matches('\\').to_string();
+                if !clean.is_empty() {
+                    return Ok(Some(clean));
+                }
+            }
+            Ok(None)
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            if let Ok(output) = std::process::Command::new("zenity")
+                .args(["--file-selection", "--directory", "--title=选择项目目录"])
+                .output()
+            {
+                if output.status.success() {
+                    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let clean = s.trim_end_matches('/').to_string();
+                    if !clean.is_empty() {
+                        return Ok(Some(clean));
+                    }
+                }
+            }
+            if let Ok(output) = std::process::Command::new("kdialog")
+                .args(["--getexistingdirectory"])
+                .output()
+            {
+                if output.status.success() {
+                    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let clean = s.trim_end_matches('/').to_string();
+                    if !clean.is_empty() {
+                        return Ok(Some(clean));
+                    }
+                }
+            }
+            Ok(None)
+        }
+    })
+    .await
+    .map_err(|e| ApiError(Error::Other(e.to_string())))?
+    .map_err(|e| ApiError(Error::Other(e)))?;
+
+    Ok(Json(json!({ "path": chosen })))
 }
 
 async fn unregister_project(

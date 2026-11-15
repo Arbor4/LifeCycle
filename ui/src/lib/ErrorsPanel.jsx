@@ -1,7 +1,9 @@
 import { api } from "./api.js";
+import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 
 export default function ErrorsPanel({ result }) {
+  const { t } = useI18n();
   function open(d) {
     api("/api/open-editor", {
       method: "POST",
@@ -15,9 +17,9 @@ export default function ErrorsPanel({ result }) {
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg2)] text-[var(--dim)]">
           <Icon name="compile" size={26} />
         </span>
-        <div className="text-sm text-[var(--mut)]">暂无编译结果</div>
+        <div className="text-sm text-[var(--mut)]">{t("暂无编译结果")}</div>
         <p className="max-w-md text-xs leading-5 text-[var(--dim)]">
-          点击「快速编译 / 部分编译 / 完整编译」后，结构化错误会显示在这里，点击任意一条可直接跳到编辑器对应行列。
+          {t("点击「快速编译 / 部分编译 / 完整编译」后，结构化错误会显示在这里，点击任意一条可直接跳到编辑器对应行列。")}
         </p>
       </div>
     );
@@ -31,15 +33,15 @@ export default function ErrorsPanel({ result }) {
         style={{ color: result.success ? "var(--grn)" : "var(--red)" }}
       >
         <Icon name={result.cancelled ? "info" : result.success ? "check" : "warn"} size={15} />
-        {result.cancelled ? "编译已取消" : result.success ? "编译成功" : "编译失败"} · {result.duration_ms}ms ·{" "}
-        {result.errors.length} 错误 / {result.warnings.length} 警告
+        {result.cancelled ? t("编译已取消") : result.success ? t("编译成功") : t("编译失败")} · {result.duration_ms}ms ·{" "}
+        {t("{a} 错误 / {b} 警告", { a: result.errors.length, b: result.warnings.length })}
       </div>
       {diagnostics.map((d, i) => (
         <button
           key={`${d.file}:${d.line}:${d.col}:${i}`}
           className="panel mb-1.5 flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm transition-colors hover:border-[var(--blu)]"
           onClick={() => open(d)}
-          title="点击在编辑器中打开"
+          title={t("点击在编辑器中打开")}
         >
           <span
             className="shrink-0 rounded px-1.5 text-xs"

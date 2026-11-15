@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { api } from "./api.js";
 import { pushToast } from "./toast.js";
+import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Modal from "./Modal.jsx";
 import Checkbox from "./Checkbox.jsx";
 
 export default function GroupModal({ group, projects, onClose, onSaved }) {
+  const { t } = useI18n();
   const [name, setName] = useState(group?.name ?? "");
   const [selected, setSelected] = useState(
     new Set((group?.members ?? []).map((m) => `${m.project}/${m.profile}`))
@@ -48,7 +50,10 @@ export default function GroupModal({ group, projects, onClose, onSaved }) {
       const body = JSON.stringify({ name: name.trim(), members });
       if (group) await api(`/api/groups/${group.id}`, { method: "PUT", body });
       else await api("/api/groups", { method: "POST", body });
-      pushToast(group ? `分组「${name}」已更新` : `分组「${name}」已创建`, { kind: "success" });
+      pushToast(
+        group ? t("分组「{name}」已更新", { name }) : t("分组「{name}」已创建", { name }),
+        { kind: "success" }
+      );
       onSaved();
     } catch (err) {
       pushToast(err.message, { kind: "error" });
@@ -59,17 +64,17 @@ export default function GroupModal({ group, projects, onClose, onSaved }) {
 
   return (
     <Modal
-      title={group ? "编辑分组" : "新建分组"}
+      title={group ? t("编辑分组") : t("新建分组")}
       icon="group"
       tone="vio"
       width={560}
       onClose={onClose}
-      subtitle="勾选要编入一组的服务，之后可一键启动 / 停止 / 重启整批微服务。"
+      subtitle={t("勾选要编入一组的服务，之后可一键启动 / 停止 / 重启整批微服务。")}
       footer={
         <>
-          <span className="mr-auto text-xs text-[var(--dim)]">已选 {selected.size} 个服务</span>
+          <span className="mr-auto text-xs text-[var(--dim)]">{t("已选 {n} 个服务", { n: selected.size })}</span>
           <button type="button" className="btn" onClick={onClose}>
-            取消
+            {t("取消")}
           </button>
           <button
             type="submit"
@@ -78,17 +83,17 @@ export default function GroupModal({ group, projects, onClose, onSaved }) {
             disabled={saving || !name.trim() || selected.size === 0}
           >
             {saving ? <span className="spinner" /> : <Icon name="save" />}
-            保存
+            {t("保存")}
           </button>
         </>
       }
     >
       <form id="group-form" onSubmit={save}>
         <label className="block">
-          <span className="field-label">分组名称</span>
+          <span className="field-label">{t("分组名称")}</span>
           <input
             className="input w-full"
-            placeholder="如：后端核心"
+            placeholder={t("如：后端核心")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -102,10 +107,10 @@ export default function GroupModal({ group, projects, onClose, onSaved }) {
             checked={allChecked}
             indeterminate={someChecked && !allChecked}
             onChange={() => setSelected(allChecked ? new Set() : new Set(allKeys))}
-            label="全选"
+            label={t("全选")}
           />
           <span className="flex-1" />
-          <span className="text-xs text-[var(--dim)]">{allKeys.length} 个可选服务</span>
+          <span className="text-xs text-[var(--dim)]">{t("{n} 个可选服务", { n: allKeys.length })}</span>
         </div>
 
         <div className="well mt-2 max-h-72 overflow-y-auto p-2">
@@ -142,7 +147,7 @@ export default function GroupModal({ group, projects, onClose, onSaved }) {
               </div>
             );
           })}
-          {projects.length === 0 && <div className="p-3 text-sm text-[var(--dim)]">还没有注册服务。</div>}
+          {projects.length === 0 && <div className="p-3 text-sm text-[var(--dim)]">{t("还没有注册服务。")}</div>}
         </div>
       </form>
     </Modal>

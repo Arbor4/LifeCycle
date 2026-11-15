@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, profilePath } from "./api.js";
 import { pushToast } from "./toast.js";
 import { STATE_LABEL, uptime } from "./format.js";
+import { useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
 import RegisterModal from "./RegisterModal.jsx";
@@ -17,7 +18,14 @@ function loadView() {
   }
 }
 
-export default function ServicesView({ projects, onOpen }) {
+export default function ServicesView({
+  projects,
+  selectedProject,
+  onSelectProject,
+  onOpenAdd,
+  onOpen,
+}) {
+  const { t } = useI18n();
   const saved = useRef(loadView()).current;
   const [q, setQ] = useState(saved.q ?? "");
   const [statusFilter, setStatusFilter] = useState(saved.statusFilter ?? "all");
@@ -29,9 +37,11 @@ export default function ServicesView({ projects, onOpen }) {
   const [now, setNow] = useState(Date.now());
   const searchRef = useRef(null);
 
+  const openAddModal = onOpenAdd || (() => setShowRegister(true));
+
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const tm = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tm);
   }, []);
 
   useEffect(() => {
@@ -40,8 +50,8 @@ export default function ServicesView({ projects, onOpen }) {
 
   useEffect(() => {
     if (!confirming) return;
-    const t = setTimeout(() => setConfirming(null), 3000);
-    return () => clearTimeout(t);
+    const tm = setTimeout(() => setConfirming(null), 3000);
+    return () => clearTimeout(tm);
   }, [confirming]);
 
   useEffect(() => {
@@ -53,19 +63,27 @@ export default function ServicesView({ projects, onOpen }) {
         searchRef.current?.focus();
       } else if (e.key === "n") {
         e.preventDefault();
-        setShowRegister(true);
+        openAddModal();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openAddModal]);
+
+  const targetProjects = useMemo(() => {
+    if (selectedProject) {
+      const found = projects.filter((p) => p.project === selectedProject);
+      return found.length ? found : projects;
+    }
+    return projects;
+  }, [projects, selectedProject]);
 
   const rows = useMemo(
     () =>
-      projects.flatMap((p) =>
+      targetProjects.flatMap((p) =>
         p.profiles.map((s) => ({ ...s, project: p.project, key: `${p.project}/${s.profile}` }))
       ),
-    [projects]
+    [targetProjects]
   );
 
   const filtered = useMemo(() => {
@@ -134,14 +152,16 @@ export default function ServicesView({ projects, onOpen }) {
   const post = (r, suffix, body) =>
     api(profilePath(r.project, r.profile, suffix), { method: "POST", body: JSON.stringify(body ?? {}) });
 
-  const start = (r) => act(r.key, () => post(r, "/start", { wait: true }), `${r.key} 已启动`);
-  const stop = (r) => act(r.key, () => post(r, "/stop"), `${r.key} 已停止`);
-  const restart = (r) => act(r.key, () => post(r, "/restart", { wait: true }), `${r.key} 已重启`);
+  const start = (r) => act(r.key, () => post(r, "/start", { wait: true }), t("{key} 已启动", { key: r.key }));
+  const stop = (r) => act(r.key, () => post(r, "/stop"), t("{key} 已停止", { key: r.key }));
+  const restart = (r) => act(r.key, () => post(r, "/restart", { wait: true }), t("{key} 已重启", { key: r.key }));
   const compile = (r) =>
     act(r.key, async () => {
       const res = await post(r, "/compile", { kind: "quick" });
       pushToast(
-        res.success ? `${r.key} 编译成功 · ${res.duration_ms}ms` : `${r.key} 编译失败 · ${res.errors.length} 错误`,
+        res.success
+          ? t("{key} 编译成功 · {ms}ms", { key: r.key, ms: res.duration_ms })
+          : t("{key} 编译失败 · {n} 错误", { key: r.key, n: res.errors.length }),
         { kind: res.success ? "success" : "error" }
       );
     });
@@ -166,19 +186,19 @@ export default function ServicesView({ projects, onOpen }) {
         next.delete(r.key);
         return next;
       });
-      pushToast(`已卸载服务「${r.project}」`, {
+      pushToast(t("已卸载服务「{name}」", { name: r.project }), {
         kind: "success",
         duration: 15000,
         action: configPath
           ? {
-              label: "撤销",
+              label: t("撤销"),
               fn: async () => {
                 try {
                   await api("/api/projects/register", {
                     method: "POST",
                     body: JSON.stringify({ path: configPath.replace(/\/lifecycle\.toml$/, "") }),
                   });
-                  pushToast(`已恢复「${r.project}」`, { kind: "success" });
+                  pushToast(t("已恢复「{name}」", { name: r.project }), { kind: "success" });
                 } catch (e) {
                   pushToast(e.message, { kind: "error" });
                 }
@@ -209,9 +229,12 @@ export default function ServicesView({ projects, onOpen }) {
         pushToast(`${r.key}: ${e.message}`, { kind: "error" });
       }
     }
-    pushToast(`批量${op === "start" ? "启动" : "停止"}完成 ${ok}/${targets.length}`, {
-      kind: ok === targets.length ? "success" : "error",
-    });
+    pushToast(
+      op === "start"
+        ? t("批量启动完成 {ok}/{total}", { ok, total: targets.length })
+        : t("批量停止完成 {ok}/{total}", { ok, total: targets.length }),
+      { kind: ok === targets.length ? "success" : "error" }
+    );
   }
 
   function rowClick(e, r) {
@@ -229,41 +252,41 @@ export default function ServicesView({ projects, onOpen }) {
   );
 
   const tiles = [
-    { label: "运行中", value: stats.running, icon: "play", tone: "grn", filter: "running" },
-    { label: "启停中", value: stats.starting, icon: "clock", tone: "amb", filter: "starting" },
-    { label: "崩溃", value: stats.crashed, icon: "warn", tone: "red", filter: "crashed" },
-    { label: "未启动", value: stats.idle, icon: "stop", tone: "dim", filter: "idle" },
-    { label: "编译失败", value: stats.buildFail, icon: "compile", tone: "vio", filter: null },
+    { label: t("运行中"), value: stats.running, icon: "play", tone: "grn", filter: "running" },
+    { label: t("启停中"), value: stats.starting, icon: "clock", tone: "amb", filter: "starting" },
+    { label: t("崩溃"), value: stats.crashed, icon: "warn", tone: "red", filter: "crashed" },
+    { label: t("未启动"), value: stats.idle, icon: "stop", tone: "dim", filter: "idle" },
+    { label: t("编译失败"), value: stats.buildFail, icon: "compile", tone: "vio", filter: null },
   ];
 
   return (
     <div className="view flex h-full min-h-0 flex-col">
       <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-3 sm:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((t) => {
+        {tiles.map((tile) => {
           const inner = (
             <>
               <span
                 className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
                 style={{
-                  background: `color-mix(in oklab, var(--${t.tone === "dim" ? "mut" : t.tone}) 14%, transparent)`,
-                  color: `var(--${t.tone === "dim" ? "mut" : t.tone})`,
+                  background: `color-mix(in oklab, var(--${tile.tone === "dim" ? "mut" : tile.tone}) 14%, transparent)`,
+                  color: `var(--${tile.tone === "dim" ? "mut" : tile.tone})`,
                 }}
               >
-                <Icon name={t.icon} size={15} />
+                <Icon name={tile.icon} size={15} />
               </span>
               <span className="min-w-0">
-                <span className="mono block text-lg font-semibold leading-tight">{t.value}</span>
-                <span className="block truncate text-[11px] text-[var(--dim)]">{t.label}</span>
+                <span className="mono block text-lg font-semibold leading-tight">{tile.value}</span>
+                <span className="block truncate text-[11px] text-[var(--dim)]">{tile.label}</span>
               </span>
             </>
           );
           const cls = "panel flex items-center gap-3 px-3 py-2 text-left transition-colors hover:border-[var(--line3)]";
-          return t.filter ? (
-            <button key={t.label} className={cls} onClick={() => setStatusFilter(t.filter)} title={`按「${t.label}」筛选`}>
+          return tile.filter ? (
+            <button key={tile.label} className={cls} onClick={() => setStatusFilter(tile.filter)} title={t("按「{label}」筛选", { label: tile.label })}>
               {inner}
             </button>
           ) : (
-            <div key={t.label} className={cls} title="最近一次编译失败的服务数">
+            <div key={tile.label} className={cls} title={t("最近一次编译失败的服务数")}>
               {inner}
             </div>
           );
@@ -273,10 +296,18 @@ export default function ServicesView({ projects, onOpen }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-2.5">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="list" size={16} className="text-[var(--blu)]" />
-          服务列表
+          {selectedProject ? (
+            <span className="flex items-center gap-1.5">
+              <span>{t("服务列表")}</span>
+              <span className="text-[var(--dim)]">/</span>
+              <span className="text-[var(--blu)] font-bold">{selectedProject}</span>
+            </span>
+          ) : (
+            t("全部服务列表")
+          )}
         </h1>
         <span className="mono text-xs text-[var(--mut)]">
-          {stats.running}/{rows.length} 运行中
+          {t("{running}/{total} 运行中", { running: stats.running, total: rows.length })}
         </span>
         <span className="flex-1" />
         <div className="relative">
@@ -284,39 +315,77 @@ export default function ServicesView({ projects, onOpen }) {
           <input
             ref={searchRef}
             className="input w-52 pl-8"
-            placeholder="搜索服务…  /"
+            placeholder={t("搜索服务…  /")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
         <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="all">全部状态</option>
-          <option value="running">运行中</option>
-          <option value="starting">启动中</option>
-          <option value="crashed">崩溃</option>
-          <option value="idle">未启动</option>
+          <option value="all">{t("全部状态")}</option>
+          <option value="running">{t("运行中")}</option>
+          <option value="starting">{t("启动中")}</option>
+          <option value="crashed">{t("崩溃")}</option>
+          <option value="idle">{t("未启动")}</option>
         </select>
-        <button className="btn btn-success" onClick={() => setShowRegister(true)} title="快捷键 n">
+        <button className="btn btn-success" onClick={openAddModal} title={t("快捷键 n，可直接选择文件夹导入项目")}>
           <Icon name="plus" />
-          创建服务
+          {t("添加项目")}
         </button>
       </div>
+
+      {projects.length > 1 && (
+        <div className="flex items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg2)]/60 px-4 py-1.5 overflow-x-auto text-xs">
+          <span className="text-[11px] font-semibold text-[var(--dim)] mr-1 flex-none">{t("项目切换:")}</span>
+          <button
+            type="button"
+            className={`rounded-full px-2.5 py-0.5 transition-colors flex-none ${
+              !selectedProject
+                ? "bg-[var(--blu)] text-white font-medium"
+                : "bg-[var(--bg1)] text-[var(--mut)] hover:bg-[var(--bg3)] hover:text-[var(--txt)] border border-[var(--line)]"
+            }`}
+            onClick={() => onSelectProject && onSelectProject(null)}
+          >
+            {t("全部 ({n})", { n: projects.reduce((sum, p) => sum + p.profiles.length, 0) })}
+          </button>
+          {projects.map((p) => {
+            const isSel = selectedProject === p.project;
+            return (
+              <button
+                key={p.project}
+                type="button"
+                className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 transition-colors flex-none ${
+                  isSel
+                    ? "bg-[var(--blu)] text-white font-medium"
+                    : "bg-[var(--bg1)] text-[var(--mut)] hover:bg-[var(--bg3)] hover:text-[var(--txt)] border border-[var(--line)]"
+                }`}
+                onClick={() => onSelectProject && onSelectProject(p.project)}
+              >
+                <Icon name="folder" size={11} className={isSel ? "text-white" : "text-[var(--dim)]"} />
+                <span>{p.project}</span>
+                <span className={`text-[10px] ${isSel ? "text-white/80" : "text-[var(--dim)]"}`}>
+                  ({p.profiles.length})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--blu-soft)] px-4 py-2 text-sm">
           <Icon name="check" size={14} className="text-[var(--blu)]" />
-          <span>已选 {selected.size} 个服务</span>
+          <span>{t("已选 {n} 个服务", { n: selected.size })}</span>
           <button className="btn btn-sm btn-success" onClick={() => bulk("start")}>
             <Icon name="play" size={12} />
-            批量启动
+            {t("批量启动")}
           </button>
           <button className="btn btn-sm btn-danger" onClick={() => bulk("stop")}>
             <Icon name="stop" size={12} />
-            批量停止
+            {t("批量停止")}
           </button>
           <span className="flex-1" />
           <button className="btn btn-sm btn-ghost" onClick={() => setSelected(new Set())}>
-            清除选择
+            {t("清除选择")}
           </button>
         </div>
       )}
@@ -331,16 +400,16 @@ export default function ServicesView({ projects, onOpen }) {
                   checked={allChecked}
                   indeterminate={someChecked && !allChecked}
                   onChange={toggleAll}
-                  title="全选当前筛选结果"
+                  title={t("全选当前筛选结果")}
                 />
               </th>
-              {thSort("name", "服务名称")}
-              {thSort("state", "状态")}
+              {thSort("name", t("服务名称"))}
+              {thSort("state", t("状态"))}
               <th>PID</th>
-              {thSort("uptime", "运行时长")}
-              {thSort("port", "端口")}
-              {thSort("build", "最近编译")}
-              <th className="text-right">操作</th>
+              {thSort("uptime", t("运行时长"))}
+              {thSort("port", t("端口"))}
+              {thSort("build", t("最近编译"))}
+              <th className="text-right">{t("操作")}</th>
             </tr>
           </thead>
           <tbody>
@@ -354,7 +423,7 @@ export default function ServicesView({ projects, onOpen }) {
                   onClick={(e) => rowClick(e, r)}
                 >
                   <td onClick={(e) => e.stopPropagation()}>
-                    <Checkbox size="sm" checked={selected.has(r.key)} onChange={() => toggle(r.key)} title={`选择 ${r.key}`} />
+                    <Checkbox size="sm" checked={selected.has(r.key)} onChange={() => toggle(r.key)} title={t("选择 {key}", { key: r.key })} />
                   </td>
                   <td>
                     <span className="mono text-[var(--blu)]">
@@ -371,7 +440,7 @@ export default function ServicesView({ projects, onOpen }) {
                           r.state === "crashed" ? "text-[var(--red)]" : r.state === "running" ? "text-[var(--grn)]" : "text-[var(--mut)]"
                         }
                       >
-                        {STATE_LABEL[r.state] ?? r.state}
+                        {t(STATE_LABEL[r.state] ?? r.state)}
                       </span>
                     </span>
                   </td>
@@ -380,9 +449,17 @@ export default function ServicesView({ projects, onOpen }) {
                   <td className="mono text-[var(--mut)]">{r.port ?? "—"}</td>
                   <td>
                     {r.last_build ? (
-                      <span className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-[var(--bg2)] transition-colors"
+                        title={t("点击直接查看该服务的编译日志")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpen(r.project, r.profile, "build");
+                        }}
+                      >
                         <span
-                          className={`mono inline-flex items-center gap-1 text-xs ${
+                          className={`mono inline-flex items-center gap-1 text-xs font-medium ${
                             r.last_build.success ? "text-[var(--grn)]" : "text-[var(--red)]"
                           }`}
                         >
@@ -390,42 +467,70 @@ export default function ServicesView({ projects, onOpen }) {
                           {r.last_build.kind}
                         </span>
                         <span className="text-xs text-[var(--dim)]">{r.last_build.duration_ms}ms</span>
-                      </span>
+                      </button>
                     ) : (
                       <span className="text-[var(--dim)]">—</span>
                     )}
                   </td>
                   <td>
-                    <div className="flex justify-end gap-1">
+                    <div className="flex justify-end items-center gap-1.5">
                       {busy[r.key] && <span className="spinner self-center text-[var(--blu)]" />}
+
+                      <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
+                        <button
+                          className="btn btn-sm btn-success !py-1 !px-2"
+                          title={t("启动服务")}
+                          disabled={running || busy[r.key]}
+                          onClick={() => start(r)}
+                        >
+                          <Icon name="play" size={11} />
+                          {t("启动")}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-danger !py-1 !px-2"
+                          title={t("停止服务")}
+                          disabled={!running}
+                          onClick={() => stop(r)}
+                        >
+                          <Icon name="stop" size={11} />
+                          {t("停止")}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-warn !py-1 !px-1.5"
+                          title={t("重启服务")}
+                          disabled={!!busy[r.key]}
+                          onClick={() => restart(r)}
+                        >
+                          <Icon name="restart" size={11} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
+                        <button
+                          className="btn btn-sm btn-primary !py-1 !px-2"
+                          title={t("快速增量编译")}
+                          disabled={!!busy[r.key]}
+                          onClick={() => compile(r)}
+                        >
+                          <Icon name="compile" size={11} />
+                          {t("编译")}
+                        </button>
+                      </div>
+
                       <button
-                        className="btn btn-sm btn-success"
-                        title="启动"
-                        disabled={running || busy[r.key]}
-                        onClick={() => start(r)}
+                        className="btn btn-sm btn-ghost !py-1 !px-1.5"
+                        title={t("查看服务启动日志")}
+                        onClick={() => onOpen(r.project, r.profile, "run")}
                       >
-                        <Icon name="play" size={12} />
-                        启动
-                      </button>
-                      <button className="btn btn-sm btn-danger" title="停止" disabled={!running} onClick={() => stop(r)}>
-                        <Icon name="stop" size={12} />
-                        停止
-                      </button>
-                      <button className="btn btn-sm btn-warn" title="重启" disabled={!!busy[r.key]} onClick={() => restart(r)}>
-                        <Icon name="restart" size={12} />
-                      </button>
-                      <button className="btn btn-sm" title="快速编译" disabled={!!busy[r.key]} onClick={() => compile(r)}>
-                        <Icon name="compile" size={12} />
-                      </button>
-                      <button className="btn btn-sm btn-ghost" title="查看日志" onClick={() => onOpen(r.project, r.profile)}>
                         <Icon name="logs" size={12} />
                       </button>
+
                       <button
-                        className={`btn btn-sm btn-ghost ${confirming === r.key ? "!text-[var(--red)]" : ""}`}
-                        title={confirming === r.key ? "再次点击确认卸载" : "卸载服务（停止并移除注册）"}
+                        className={`btn btn-sm btn-ghost !py-1 !px-1.5 ${confirming === r.key ? "!text-[var(--red)]" : ""}`}
+                        title={confirming === r.key ? t("再次点击确认卸载") : t("卸载服务（停止并移除注册）")}
                         onClick={() => unregister(r)}
                       >
-                        {confirming === r.key ? <span className="text-xs">确认?</span> : <Icon name="trash" size={12} />}
+                        {confirming === r.key ? <span className="text-xs">{t("确认?")}</span> : <Icon name="trash" size={12} />}
                       </button>
                     </div>
                   </td>
@@ -441,33 +546,31 @@ export default function ServicesView({ projects, onOpen }) {
               <Icon name="server" size={26} />
             </span>
             <div className="text-sm text-[var(--mut)]">
-              {rows.length === 0 ? "还没有注册任何服务" : "没有匹配的服务"}
+              {rows.length === 0 ? t("还没有注册任何服务") : t("没有匹配的服务")}
             </div>
             <p className="max-w-sm text-xs leading-5 text-[var(--dim)]">
               {rows.length === 0
-                ? "填入项目目录即可自动探测 Node / Rust / Maven 工程并生成 lifecycle.toml。"
-                : "试试清空搜索或切换状态筛选。"}
+                ? t("填入项目目录即可自动探测 Node / Rust / Maven 工程并生成 lifecycle.toml。")
+                : t("试试清空搜索或切换状态筛选。")}
             </p>
-            <button className="btn btn-success btn-sm" onClick={() => setShowRegister(true)}>
+            <button className="btn btn-success btn-sm" onClick={openAddModal}>
               <Icon name="plus" />
-              创建第一个服务
+              {t("添加第一个项目")}
             </button>
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-3 border-t border-[var(--line)] bg-[var(--bg1)] px-4 py-1.5 text-[11px] text-[var(--dim)]">
-        <span>
-          显示 {filtered.length}/{rows.length}
+        <span>{t("显示 {a}/{b}", { a: filtered.length, b: rows.length })}</span>
+        <span className="flex items-center gap-1">
+          <span className="kbd">/</span> {t("搜索")}
         </span>
         <span className="flex items-center gap-1">
-          <span className="kbd">/</span> 搜索
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="kbd">n</span> 新建
+          <span className="kbd">n</span> {t("新建")}
         </span>
         <span className="flex-1" />
-        <span>点击行进入详情 · 筛选与排序已自动保存</span>
+        <span>{t("点击行进入详情 · 筛选与排序已自动保存")}</span>
       </div>
 
       {showRegister && <RegisterModal onClose={() => setShowRegister(false)} onSaved={() => setShowRegister(false)} />}

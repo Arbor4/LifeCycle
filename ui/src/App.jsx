@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, BASE, notify, profilePath } from "./lib/api.js";
 import { pushToast } from "./lib/toast.js";
 import { adoptTheme } from "./lib/theme.js";
+import { adoptLang, useI18n, t as tr } from "./lib/i18n.js";
 import Sidebar from "./lib/Sidebar.jsx";
 import StatusCard from "./lib/StatusCard.jsx";
 import LogPanel from "./lib/LogPanel.jsx";
@@ -14,6 +15,7 @@ import ServicesView from "./lib/ServicesView.jsx";
 import GroupsView from "./lib/GroupsView.jsx";
 import McpView from "./lib/McpView.jsx";
 import ToastHost from "./lib/ToastHost.jsx";
+import RegisterModal from "./lib/RegisterModal.jsx";
 import Icon from "./lib/Icon.jsx";
 
 const TABS = [
@@ -23,14 +25,18 @@ const TABS = [
 ];
 
 export default function App() {
+  const { t } = useI18n();
   const [projects, setProjects] = useState([]);
   const [sel, setSel] = useState({ project: null, profile: null });
+  const [selectedProject, setSelectedProject] = useState(null);
   const [view, setView] = useState("services");
   const [tab, setTab] = useState("logs");
+  const [logSource, setLogSource] = useState("run");
   const [errorsByProfile, setErrorsByProfile] = useState({});
   const [busy, setBusy] = useState({});
   const [message, setMessage] = useState(null);
   const [showPartial, setShowPartial] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
   const [online, setOnline] = useState(false);
 
@@ -51,10 +57,11 @@ export default function App() {
   const running = current?.state === "running" || current?.state === "starting";
   const compiling = busy[key] === "compile";
 
-  const openDetail = useCallback((project, profile) => {
+  const openDetail = useCallback((project, profile, source = "run") => {
     setSel({ project, profile });
     setView("detail");
     setTab("logs");
+    if (source) setLogSource(source);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -74,12 +81,12 @@ export default function App() {
         const prev = prevStates.current[k];
         if (prev && settingsRef.current.notifications) {
           if (s.state === "crashed" && prev.state !== "crashed") {
-            notify("LifeCycle：进程崩溃", `${k} 意外退出`);
-            pushToast(`${k} 崩溃`, { kind: "error" });
+            notify(tr("LifeCycle：进程崩溃"), tr("{k} 意外退出", { k }));
+            pushToast(tr("{k} 崩溃", { k }), { kind: "error" });
           }
           const ts = s.last_build?.finished_at_ms;
           if (ts && ts !== prev.buildTs && s.last_build && !s.last_build.success) {
-            notify("LifeCycle：编译失败", `${k} 有 ${s.last_build.error_count} 个错误`);
+            notify(tr("LifeCycle：编译失败"), tr("{k} 有 {n} 个错误", { k, n: s.last_build.error_count }));
           }
         }
         prevStates.current[k] = { state: s.state, buildTs: s.last_build?.finished_at_ms };
@@ -107,6 +114,7 @@ export default function App() {
           if (!alive) return;
           setSettings(s);
           if (s.theme) adoptTheme(s.theme);
+          if (s.language) adoptLang(s.language);
         })
         .catch(() => {});
     })();
@@ -141,18 +149,18 @@ export default function App() {
           if (!r.success && r.errors.length) setTab("errors");
           pushToast(
             r.cancelled
-              ? "编译已取消"
+              ? tr("编译已取消")
               : r.success
-                ? `编译成功 · ${r.duration_ms}ms`
-                : `编译失败 · ${r.errors.length} 错误`,
+                ? tr("编译成功 · {ms}ms", { ms: r.duration_ms })
+                : tr("编译失败 · {n} 错误", { n: r.errors.length }),
             { kind: r.success ? "success" : "error" }
           );
         } else if (name === "start") {
-          pushToast(`${k} 已启动${r?.ready ? "（就绪）" : ""}`, { kind: "success" });
+          pushToast(r?.ready ? tr("{k} 已启动（就绪）", { k }) : tr("{k} 已启动", { k }), { kind: "success" });
         } else if (name === "stop") {
-          pushToast(`${k} 已停止`, { kind: "success" });
+          pushToast(tr("{k} 已停止", { k }), { kind: "success" });
         } else if (name === "restart") {
-          pushToast(`${k} 已重启`, { kind: "success" });
+          pushToast(tr("{k} 已重启", { k }), { kind: "success" });
         }
         await refresh();
       } catch (e) {
@@ -188,7 +196,7 @@ export default function App() {
     try {
       await api(`/api/projects/${encodeURIComponent(sel.project)}/reload`, { method: "POST" });
       setMessage(null);
-      pushToast("配置已重载", { kind: "success" });
+      pushToast(t("配置已重载"), { kind: "success" });
       await refresh();
     } catch (e) {
       setMessage(e.message);
@@ -201,14 +209,29 @@ export default function App() {
         projects={projects}
         sel={sel}
         view={view}
+        selectedProject={selectedProject}
         online={online}
         onSelect={openDetail}
-        onNavigate={(v) => setView(v)}
+        onSelectProject={(p) => {
+          setSelectedProject(p);
+          setView("services");
+        }}
+        onNavigate={(v) => {
+          setView(v);
+          if (v !== "services") setSelectedProject(null);
+        }}
+        onOpenAddProject={() => setShowRegister(true)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
         {view === "services" ? (
-          <ServicesView projects={projects} onOpen={openDetail} />
+          <ServicesView
+            projects={projects}
+            selectedProject={selectedProject}
+            onSelectProject={setSelectedProject}
+            onOpenAdd={() => setShowRegister(true)}
+            onOpen={openDetail}
+          />
         ) : view === "groups" ? (
           <GroupsView projects={projects} onOpen={openDetail} />
         ) : view === "mcp" ? (
@@ -222,50 +245,92 @@ export default function App() {
             <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <StatusCard status={current} project={sel.project} />
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button className="btn btn-success" disabled={running || isBusy} onClick={start}>
-                    <Icon name="play" size={13} />
-                    启动
-                  </button>
-                  <button
-                    className="btn btn-success"
-                    disabled={running || isBusy}
-                    onClick={startFast}
-                    title="跳过等待就绪，直接拉起"
-                  >
-                    <Icon name="zap" size={13} />
-                    快速启动
-                  </button>
-                  <button className="btn btn-danger" disabled={!running || isBusy} onClick={stop}>
-                    <Icon name="stop" size={13} />
-                    停止
-                  </button>
-                  <button className="btn btn-warn" disabled={isBusy} onClick={restart}>
-                    <Icon name="restart" size={13} />
-                    重启
-                  </button>
-                  <span className="mx-1 border-l border-[var(--line2)]" />
-                  {compiling ? (
-                    <button className="btn" onClick={cancelCompile}>
-                      <span className="spinner" />
-                      取消编译…
+
+                {/* 运行与编译操作区分开展示 */}
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                      {t("运行")}
+                    </span>
+                    <button
+                      className="btn btn-success btn-sm"
+                      disabled={running || isBusy}
+                      onClick={start}
+                      title={t("启动服务并等待就绪检查")}
+                    >
+                      <Icon name="play" size={12} />
+                      {t("启动")}
                     </button>
-                  ) : (
-                    <>
-                      <button className="btn btn-primary" disabled={isBusy} onClick={compileQuick}>
-                        <Icon name="compile" size={13} />
-                        快速编译
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      disabled={running || isBusy}
+                      onClick={startFast}
+                      title={t("跳过等待就绪，直接拉起")}
+                    >
+                      <Icon name="zap" size={12} />
+                      {t("快速")}
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={!running || isBusy}
+                      onClick={stop}
+                      title={t("停止服务")}
+                    >
+                      <Icon name="stop" size={12} />
+                      {t("停止")}
+                    </button>
+                    <button
+                      className="btn btn-warn btn-sm"
+                      disabled={isBusy}
+                      onClick={restart}
+                      title={t("重启服务")}
+                    >
+                      <Icon name="restart" size={12} />
+                      {t("重启")}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] mr-1">
+                      {t("编译")}
+                    </span>
+                    {compiling ? (
+                      <button className="btn btn-danger btn-sm" onClick={cancelCompile}>
+                        <span className="spinner" />
+                        {t("取消编译…")}
                       </button>
-                      <button className="btn btn-primary" disabled={isBusy} onClick={() => setShowPartial(true)}>
-                        <Icon name="grid" size={13} />
-                        部分编译
-                      </button>
-                      <button className="btn btn-primary" disabled={isBusy} onClick={compileFull}>
-                        <Icon name="boxes" size={13} />
-                        完整编译
-                      </button>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={isBusy}
+                          onClick={compileQuick}
+                          title={t("增量快速编译")}
+                        >
+                          <Icon name="compile" size={12} />
+                          {t("快速编译")}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={isBusy}
+                          onClick={() => setShowPartial(true)}
+                          title={t("指定模块部分编译")}
+                        >
+                          <Icon name="grid" size={12} />
+                          {t("部分")}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={isBusy}
+                          onClick={compileFull}
+                          title={t("全量完整编译")}
+                        >
+                          <Icon name="boxes" size={12} />
+                          {t("全量")}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
               {message && (
@@ -277,31 +342,36 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-4">
-              {TABS.map(([t, label, icon]) => (
+              {TABS.map(([id, label, icon]) => (
                 <button
-                  key={t}
+                  key={id}
                   className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
-                    tab === t
+                    tab === id
                       ? "border-b-2 border-[var(--blu)] font-medium text-[var(--blu)]"
                       : "text-[var(--mut)] hover:text-[var(--txt)]"
                   }`}
-                  onClick={() => setTab(t)}
+                  onClick={() => setTab(id)}
                 >
                   <Icon name={icon} size={13} />
-                  {label}
-                  {t === "errors" && currentErrors ? ` (${currentErrors.errors.length})` : ""}
+                  {t(label)}
+                  {id === "errors" && currentErrors ? ` (${currentErrors.errors.length})` : ""}
                 </button>
               ))}
               <span className="flex-1" />
-              <button className="btn btn-ghost btn-sm" title="重新读取 lifecycle.toml，无需重启" onClick={reload}>
+              <button className="btn btn-ghost btn-sm" title={t("重新读取 lifecycle.toml，无需重启")} onClick={reload}>
                 <Icon name="refresh" size={12} />
-                重载配置
+                {t("重载配置")}
               </button>
             </div>
 
             <div className="min-h-0 flex-1" key={key}>
               {tab === "logs" ? (
-                <LogPanel project={sel.project} profile={sel.profile} maxLines={settings.log_lines ?? 5000} />
+                <LogPanel
+                  project={sel.project}
+                  profile={sel.profile}
+                  maxLines={settings.log_lines ?? 5000}
+                  initialSource={logSource}
+                />
               ) : tab === "errors" ? (
                 <ErrorsPanel result={currentErrors} />
               ) : (
@@ -314,16 +384,15 @@ export default function App() {
             {message ? (
               <>
                 <Icon name="warn" size={28} className="text-[var(--red)]" />
-                <div className="text-sm">无法连接后端：{message}</div>
+                <div className="text-sm">{t("无法连接后端：{msg}", { msg: message })}</div>
                 <p className="max-w-md text-center text-xs leading-5">
-                  请确认 LifeCycle 后端已启动（默认端口 39517），或运行{" "}
-                  <span className="mono">cargo run -p lifecycle-http</span>。
+                  {t("请确认 LifeCycle 后端已启动（默认端口 39517），或运行 {cmd}。", { cmd: "cargo run -p lifecycle-http" })}
                 </p>
               </>
             ) : (
               <>
                 <span className="spinner !h-5 !w-5 text-[var(--blu)]" />
-                <div className="text-sm">加载中…</div>
+                <div className="text-sm">{t("加载中…")}</div>
               </>
             )}
           </div>
@@ -336,6 +405,19 @@ export default function App() {
           profile={sel.profile}
           onClose={() => setShowPartial(false)}
           onSubmit={compilePartial}
+        />
+      )}
+      {showRegister && (
+        <RegisterModal
+          onClose={() => setShowRegister(false)}
+          onSaved={async (newProject) => {
+            setShowRegister(false);
+            const data = await refresh();
+            if (newProject) {
+              setSelectedProject(newProject);
+              setView("services");
+            }
+          }}
         />
       )}
       <ToastHost />

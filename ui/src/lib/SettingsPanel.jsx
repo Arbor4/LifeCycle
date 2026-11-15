@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 import { pushToast } from "./toast.js";
 import { adoptTheme, persistTheme, setTheme, useTheme } from "./theme.js";
+import { persistLang, useI18n } from "./i18n.js";
 import Icon from "./Icon.jsx";
 import Switch from "./Switch.jsx";
 import Segmented from "./Segmented.jsx";
@@ -13,6 +14,7 @@ const DEFAULTS = {
   ready_timeout_ms: 120000,
   compile_timeout_ms: 300000,
   theme: "system",
+  language: "zh",
 };
 
 function Section({ icon, title, desc, children, tone = "blu" }) {
@@ -36,6 +38,7 @@ function Section({ icon, title, desc, children, tone = "blu" }) {
 }
 
 export default function SettingsPanel() {
+  const { t, lang, setLang } = useI18n();
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +62,7 @@ export default function SettingsPanel() {
     try {
       await api("/api/settings", { method: "PUT", body: JSON.stringify(settings) });
       setSaved(settings);
-      pushToast("设置已保存", { kind: "success" });
+      pushToast(t("设置已保存"), { kind: "success" });
     } catch (e) {
       pushToast(e.message, { kind: "error" });
     } finally {
@@ -73,8 +76,14 @@ export default function SettingsPanel() {
     persistTheme().catch(() => {});
   }
 
+  function changeLang(v) {
+    setLang(v);
+    set("language", v);
+    persistLang().catch(() => {});
+  }
+
   if (!settings) {
-    return <div className="flex h-full items-center justify-center bg-[var(--bg0)] text-[var(--dim)]">加载中…</div>;
+    return <div className="flex h-full items-center justify-center bg-[var(--bg0)] text-[var(--dim)]">{t("加载中…")}</div>;
   }
 
   return (
@@ -82,40 +91,51 @@ export default function SettingsPanel() {
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-3">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="settings" size={16} className="text-[var(--amb)]" />
-          全局设置
+          {t("全局设置")}
         </h1>
-        <span className="text-xs text-[var(--mut)]">作用于整个 LifeCycle，与具体服务无关</span>
+        <span className="text-xs text-[var(--mut)]">{t("作用于整个 LifeCycle，与具体服务无关")}</span>
         <span className="flex-1" />
-        <span className="chip mono cursor-default" title="设置持久化位置">
+        <span className="chip mono cursor-default" title="settings.json">
           <Icon name="config" size={12} />
           ~/.lifecycle/settings.json
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto max-w-2xl space-y-3">
-          <Section icon="sun" title="外观" desc="主题立即生效，并持久化到 ~/.lifecycle/settings.json。" tone="amb">
+          <Section icon="sun" title={t("外观")} desc={t("主题立即生效，并持久化到 ~/.lifecycle/settings.json。")} tone="amb">
             <div className="flex flex-wrap items-center gap-3">
               <Segmented
                 value={mode}
                 onChange={changeTheme}
                 options={[
-                  { value: "light", label: "亮色", icon: "sun" },
-                  { value: "dark", label: "暗色", icon: "moon" },
-                  { value: "system", label: "跟随系统", icon: "monitor" },
+                  { value: "light", label: t("亮色"), icon: "sun" },
+                  { value: "dark", label: t("暗色"), icon: "moon" },
+                  { value: "system", label: t("跟随系统"), icon: "monitor" },
                 ]}
               />
-              <span className="text-xs text-[var(--dim)]">亮暗两套配色均针对长时间盯日志做了对比度调校。</span>
+              <span className="text-xs text-[var(--dim)]">{t("亮暗两套配色均针对长时间盯日志做了对比度调校。")}</span>
             </div>
           </Section>
 
-          <Section icon="warn" title="通知" desc="进程意外退出或编译失败时推送系统通知。" tone="red">
+          <Section icon="link" title={t("语言")} desc={t("界面语言立即生效，并随设置持久化。")} tone="cyn">
+            <Segmented
+              value={lang}
+              onChange={changeLang}
+              options={[
+                { value: "zh", label: "中文", title: "简体中文" },
+                { value: "en", label: "English", title: "English" },
+              ]}
+            />
+          </Section>
+
+          <Section icon="warn" title={t("通知")} desc={t("进程意外退出或编译失败时推送系统通知。")} tone="red">
             <label className="flex cursor-pointer items-center gap-3">
-              <Switch checked={settings.notifications} onChange={(v) => set("notifications", v)} label="系统通知" />
-              <span className="text-sm">崩溃 / 编译失败系统通知</span>
+              <Switch checked={settings.notifications} onChange={(v) => set("notifications", v)} label={t("通知")} />
+              <span className="text-sm">{t("崩溃 / 编译失败系统通知")}</span>
             </label>
           </Section>
 
-          <Section icon="open" title="编辑器跳转" desc="点击编译错误时用该命令打开文件，支持 {file} / {line} / {col} 占位。" tone="blu">
+          <Section icon="open" title={t("编辑器跳转")} desc={t("点击编译错误时用该命令打开文件，支持 {file} / {line} / {col} 占位。")} tone="blu">
             <input
               className="input mono w-full"
               value={settings.editor_command}
@@ -136,10 +156,10 @@ export default function SettingsPanel() {
             </div>
           </Section>
 
-          <Section icon="logs" title="日志与超时" desc="实际超时以 lifecycle.toml 中的配置为准，这里只是默认值。" tone="cyn">
+          <Section icon="logs" title={t("日志与超时")} desc={t("实际超时以 lifecycle.toml 中的配置为准，这里只是默认值。")} tone="cyn">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block">
-                <span className="field-label">日志缓冲行数</span>
+                <span className="field-label">{t("日志缓冲行数")}</span>
                 <input
                   type="number"
                   className="input w-full"
@@ -149,7 +169,7 @@ export default function SettingsPanel() {
                 />
               </label>
               <label className="block">
-                <span className="field-label">就绪超时 (ms)</span>
+                <span className="field-label">{t("就绪超时 (ms)")}</span>
                 <input
                   type="number"
                   className="input w-full"
@@ -160,7 +180,7 @@ export default function SettingsPanel() {
                 />
               </label>
               <label className="block">
-                <span className="field-label">编译超时 (ms)</span>
+                <span className="field-label">{t("编译超时 (ms)")}</span>
                 <input
                   type="number"
                   className="input w-full"
@@ -174,8 +194,7 @@ export default function SettingsPanel() {
           </Section>
 
           <p className="px-1 text-xs text-[var(--dim)]">
-            设置持久化于 <span className="mono">~/.lifecycle/settings.json</span>；分组保存在{" "}
-            <span className="mono">~/.lifecycle/groups.json</span>。
+            {t("设置持久化于 {a}；分组保存在 {b}。", { a: "~/.lifecycle/settings.json", b: "~/.lifecycle/groups.json" })}
           </p>
         </div>
       </div>
@@ -184,28 +203,28 @@ export default function SettingsPanel() {
         {dirty ? (
           <>
             <span className="dot dot-starting" />
-            <span className="text-sm">有未保存的更改</span>
+            <span className="text-sm">{t("有未保存的更改")}</span>
           </>
         ) : (
           <>
             <Icon name="check" size={14} className="text-[var(--grn)]" />
-            <span className="text-sm text-[var(--mut)]">已保存</span>
+            <span className="text-sm text-[var(--mut)]">{t("已保存")}</span>
           </>
         )}
         <span className="flex-1" />
         <button
           className="btn btn-sm"
           onClick={() => {
-            setSettings({ ...DEFAULTS, theme: mode });
+            setSettings({ ...DEFAULTS, theme: mode, language: lang });
             setTheme(DEFAULTS.theme);
           }}
         >
           <Icon name="undo" size={12} />
-          恢复默认
+          {t("恢复默认")}
         </button>
         <button className="btn btn-sm btn-primary" disabled={!dirty || saving} onClick={save}>
           {saving ? <span className="spinner" /> : <Icon name="save" size={12} />}
-          保存设置
+          {t("保存设置")}
         </button>
       </div>
     </div>

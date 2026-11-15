@@ -3,6 +3,7 @@ import { api, BASE, profilePath } from "./api.js";
 import { levelOf } from "./format.js";
 import { pushToast } from "./toast.js";
 import { useTheme } from "./theme.js";
+import { useI18n } from "./i18n.js";
 import { LogContent } from "./logHighlight.jsx";
 import Icon from "./Icon.jsx";
 import Checkbox from "./Checkbox.jsx";
@@ -11,8 +12,13 @@ const ROW = 20;
 const CAP = 100000;
 const COLOR_KEY = "lifecycle-log-color";
 
-export default function LogPanel({ project, profile, maxLines = 5000 }) {
-  const [source, setSource] = useState("run");
+export default function LogPanel({ project, profile, maxLines = 5000, initialSource = "run" }) {
+  const { t } = useI18n();
+  const [source, setSource] = useState(initialSource);
+
+  useEffect(() => {
+    if (initialSource) setSource(initialSource);
+  }, [initialSource]);
   const [lines, setLines] = useState([]);
   const [level, setLevel] = useState("all");
   const [regexText, setRegexText] = useState("");
@@ -147,22 +153,43 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
     [matches, matchPos, viewH]
   );
 
+  const sourceBtn = (active) =>
+    `flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all ${
+      active ? "bg-[var(--bg1)] text-[var(--txt)] shadow-sm font-semibold" : "text-[var(--mut)] hover:text-[var(--txt)]"
+    }`;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-2 text-sm">
-        <select className="input" value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="run">启动日志</option>
-          <option value="build">编译日志</option>
-        </select>
+        <div className="flex items-center rounded-lg bg-[var(--bg2)] p-0.5 border border-[var(--line)]">
+          <button
+            type="button"
+            className={sourceBtn(source === "run")}
+            onClick={() => setSource("run")}
+            title={t("查看服务启动/运行控制台输出（一键切换）")}
+          >
+            <Icon name="play" size={11} className={source === "run" ? "text-[var(--grn)]" : ""} />
+            {t("启动日志")}
+          </button>
+          <button
+            type="button"
+            className={sourceBtn(source === "build")}
+            onClick={() => setSource("build")}
+            title={t("查看构建与编译输出（一键切换）")}
+          >
+            <Icon name="compile" size={11} className={source === "build" ? "text-[var(--vio)]" : ""} />
+            {t("编译日志")}
+          </button>
+        </div>
         <select className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
-          <option value="all">全部级别</option>
+          <option value="all">{t("全部级别")}</option>
           <option value="error">ERROR</option>
           <option value="warn">WARN</option>
           <option value="info">INFO</option>
         </select>
         <input
           className={`input w-40 ${regexText && !regexRe ? "!border-[var(--red)]" : ""}`}
-          placeholder="正则过滤…"
+          placeholder={t("正则过滤…")}
           value={regexText}
           onChange={(e) => setRegexText(e.target.value)}
         />
@@ -171,7 +198,7 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
           <Icon name="search" size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" />
           <input
             className="input w-36 pl-7"
-            placeholder="搜索…"
+            placeholder={t("搜索…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -179,14 +206,14 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
             }}
           />
         </div>
-        <button className="btn btn-sm" onClick={() => gotoMatch(-1)} title="上一个匹配 (Shift+Enter)">
+        <button className="btn btn-sm" onClick={() => gotoMatch(-1)} title={t("上一个匹配 (Shift+Enter)")}>
           <Icon name="up" size={12} />
         </button>
-        <button className="btn btn-sm" onClick={() => gotoMatch(1)} title="下一个匹配 (Enter)">
+        <button className="btn btn-sm" onClick={() => gotoMatch(1)} title={t("下一个匹配 (Enter)")}>
           <Icon name="down" size={12} />
         </button>
         <span className="mono text-xs text-[var(--dim)]">
-          {matches.length ? `${matchPos + 1}/${matches.length}` : `${visible.length} 行`}
+          {matches.length ? `${matchPos + 1}/${matches.length}` : t("{n} 行", { n: visible.length })}
         </span>
         <span className="flex-1" />
         <Checkbox
@@ -194,13 +221,13 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
           tone="cyn"
           checked={colorOn}
           onChange={setColorOn}
-          label="颜色"
-          title="解析 ANSI 终端色与 Spring/Vite 风格语义高亮；子进程需重启后才会输出 ANSI（[logs].color）"
+          label={t("颜色")}
+          title={t("解析 ANSI 终端色与 Spring/Vite 风格语义高亮；子进程需重启后才会输出 ANSI（[logs].color）")}
         />
-        <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label="自动滚动" />
+        <Checkbox size="sm" checked={autoScroll} onChange={setAutoScroll} label={t("自动滚动")} />
         <button className="btn btn-sm" onClick={() => setLines([])}>
           <Icon name="x" size={12} />
-          清屏
+          {t("清屏")}
         </button>
         <button
           className="btn btn-sm"
@@ -209,7 +236,7 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
           }
         >
           <Icon name="open" size={12} />
-          打开日志文件
+          {t("打开日志文件")}
         </button>
       </div>
 
@@ -233,7 +260,7 @@ export default function LogPanel({ project, profile, maxLines = 5000 }) {
         </div>
         {visible.length === 0 && (
           <div className="flex h-full items-center justify-center text-xs text-[var(--dim)]">
-            暂无日志。启动服务或执行编译后，输出会实时出现在这里。
+            {t("暂无日志。启动服务或执行编译后，输出会实时出现在这里。")}
           </div>
         )}
       </div>
