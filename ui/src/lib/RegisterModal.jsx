@@ -325,7 +325,7 @@ function ServiceModal({ projects, defaultProject, onClose, onSaved }) {
           </label>
           <label className="block">
             <span className="field-label flex items-center gap-1">
-              <Icon name="boxes" size={11} className="text-[var(--pur)]" />
+              <Icon name="boxes" size={11} className="text-[var(--vio)]" />
               {t("全量编译命令（可选）")}
             </span>
             <input

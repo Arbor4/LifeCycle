@@ -13,6 +13,7 @@ const NAV = [
 
 const THEME_ORDER = ["light", "dark", "system"];
 const THEME_ICON = { light: "sun", dark: "moon", system: "monitor" };
+const ENV_TONE = { dev: "blu", test: "amb", staging: "vio", prod: "grn" };
 
 export default function Sidebar({
   projects = [],
@@ -46,7 +47,9 @@ export default function Sidebar({
       .map((p) => ({
         ...p,
         profiles: p.profiles.filter(
-          (s) => !q || `${p.project}/${s.profile}`.toLowerCase().includes(q)
+          (s) =>
+            !q ||
+            `${p.project}/${s.profile}/${s.service ?? ""}/${s.env_name ?? ""}`.toLowerCase().includes(q)
         ),
       }))
       .filter((p) => p.profiles.length);
@@ -289,20 +292,34 @@ export default function Sidebar({
                     <div className="ml-3 mt-0.5 space-y-0.5 border-l border-[var(--line2)] pl-2">
                       {p.profiles.map((s) => {
                         const active = view === "detail" && sel?.project === p.project && sel?.profile === s.profile;
+                        const svc = s.service || s.profile;
+                        const env = s.env_name || s.profile;
+                        const envTone = ENV_TONE[env] ?? "mut";
                         return (
                           <button
                             key={s.profile}
-                            className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors ${
+                            className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors ${
                               active
                                 ? "bg-[var(--bg3)] text-[var(--blu)] font-medium"
                                 : "text-[var(--mut)] hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
                             }`}
                             onClick={() => onSelect(p.project, s.profile)}
-                            title={t("进入 {key} 详情与日志", { key: `${p.project}/${s.profile}` })}
+                            title={t("进入 {key} 详情与日志", { key: `${p.project}/${svc} @ ${env} (${s.profile})` })}
                           >
-                            <span className={`dot dot-${s.state}`} />
-                            <span className="mono flex-1 truncate">{s.profile}</span>
-                            <span className="mono text-[11px] text-[var(--dim)] flex-none">
+                            <span className={`dot dot-${s.state} flex-none`} />
+                            <span className="min-w-0 flex-1 truncate font-medium">{svc}</span>
+                            <span
+                              className="mono flex-none rounded border px-1 py-px text-[9px] leading-3"
+                              style={{
+                                color: `var(--${envTone})`,
+                                borderColor: `color-mix(in oklab, var(--${envTone}) 35%, transparent)`,
+                                background: `color-mix(in oklab, var(--${envTone}) 10%, transparent)`,
+                              }}
+                              title={t("环境: {env}", { env })}
+                            >
+                              {env}
+                            </span>
+                            <span className="mono text-[10px] text-[var(--dim)] flex-none">
                               {s.state === "running" && s.uptime_ms != null
                                 ? shortUptime(s.uptime_ms) || "0s"
                                 : t(STATE_LABEL[s.state] ?? s.state)}

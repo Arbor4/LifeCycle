@@ -385,7 +385,7 @@ export default function ConfigPanel({ project, profile, current, onRefresh }) {
 
             <label className="block">
               <span className="field-label flex items-center gap-1.5">
-                <Icon name="boxes" size={12} className="text-[var(--pur)]" />
+                <Icon name="boxes" size={12} className="text-[var(--vio)]" />
                 {t("全量编译命令（清理与完整构建）")}
               </span>
               <input

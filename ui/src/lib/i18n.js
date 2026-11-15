@@ -440,6 +440,7 @@ const EN = {
   配置原文已保存并热加载: "Raw config saved and hot-reloaded",
   "原文保存会整份替换 lifecycle.toml（注释需自行保留）；保存前自动校验，失败不写盘。":
     "Saving raw replaces lifecycle.toml wholesale (keep comments yourself); validated before write, nothing is written on failure.",
+  "环境: {env}": "Environment: {env}",
   添加第一个项目: "Add your first project",
   添加第一个服务: "Add your first service",
   "添加 / 导入服务": "Add / import service",
