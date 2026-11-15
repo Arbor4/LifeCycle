@@ -3,12 +3,16 @@ import Icon from "./Icon.jsx";
 
 export default function Modal({ title, subtitle, icon, tone = "blu", width = 520, onClose, children, footer }) {
   const panel = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
+  // 仅挂载时聚焦一次：onClose 多为内联箭头函数，若作为依赖会随父级每秒
+  // 重渲染（SSE 状态推送）反复执行 focus()，抢走下拉框/输入框焦点
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -16,7 +20,7 @@ export default function Modal({ title, subtitle, icon, tone = "blu", width = 520
     const first = body?.querySelector("input,select,textarea") ?? panel.current?.querySelector("button");
     first?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const color = `var(--${tone})`;
   return (
