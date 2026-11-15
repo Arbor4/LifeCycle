@@ -252,6 +252,44 @@ fn ensure_table<'a>(doc: &'a mut toml_edit::DocumentMut, keys: &[&str]) -> &'a m
     item.as_table_mut().expect("leaf must be a table")
 }
 
+fn remove_key(doc: &mut toml_edit::DocumentMut, keys: &[&str]) {
+    let (last, parents) = keys.split_last().expect("non-empty keys");
+    let mut item = doc.as_item_mut();
+    for k in parents {
+        match item.as_table_mut().and_then(|t| t.get_mut(k)) {
+            Some(next) => item = next,
+            None => return,
+        }
+    }
+    if let Some(t) = item.as_table_mut() {
+        t.remove(last);
+    }
+}
+
+fn remove_table_if_empty(doc: &mut toml_edit::DocumentMut, keys: &[&str]) {
+    let (last, parents) = keys.split_last().expect("non-empty keys");
+    let mut item = doc.as_item_mut();
+    for k in keys {
+        match item.as_table_mut().and_then(|t| t.get_mut(k)) {
+            Some(next) => item = next,
+            None => return,
+        }
+    }
+    if !item.as_table_mut().is_some_and(|t| t.is_empty()) {
+        return;
+    }
+    let mut parent = doc.as_item_mut();
+    for k in parents {
+        parent = parent
+            .as_table_mut()
+            .and_then(|t| t.get_mut(k))
+            .expect("path existed above");
+    }
+    if let Some(t) = parent.as_table_mut() {
+        t.remove(last);
+    }
+}
+
 pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Result<()> {
     if profile.trim().is_empty() {
         return Err(Error::Config("profile name must not be empty".into()));
@@ -263,15 +301,28 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
     let existed = doc.get("profiles").and_then(|p| p.get(profile)).is_some();
 
+    // 可选字段传空串/0 表示「清空」（删除键），None 表示「保持不变」
     let base = ["profiles", profile];
     if let Some(s) = &patch.service {
-        ensure_table(&mut doc, &base)["service"] = toml_edit::value(s.as_str());
+        if s.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "service"]);
+        } else {
+            ensure_table(&mut doc, &base)["service"] = toml_edit::value(s.as_str());
+        }
     }
     if let Some(e) = &patch.env_name {
-        ensure_table(&mut doc, &base)["env_name"] = toml_edit::value(e.as_str());
+        if e.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "env_name"]);
+        } else {
+            ensure_table(&mut doc, &base)["env_name"] = toml_edit::value(e.as_str());
+        }
     }
     if let Some(w) = &patch.workdir {
-        ensure_table(&mut doc, &base)["workdir"] = toml_edit::value(w.as_str());
+        if w.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "workdir"]);
+        } else {
+            ensure_table(&mut doc, &base)["workdir"] = toml_edit::value(w.as_str());
+        }
     }
     if let Some(env) = &patch.env {
         let mut t = toml_edit::Table::new();
@@ -285,28 +336,54 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
             toml_edit::value(cmd.as_str());
     }
     if let Some(cmd) = &patch.fast_start_command {
-        ensure_table(&mut doc, &["profiles", profile, "start"])["fast_command"] =
-            toml_edit::value(cmd.as_str());
+        if cmd.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "start", "fast_command"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "start"])["fast_command"] =
+                toml_edit::value(cmd.as_str());
+        }
     }
     if let Some(cmd) = &patch.stop_command {
-        ensure_table(&mut doc, &["profiles", profile, "stop"])["command"] =
-            toml_edit::value(cmd.as_str());
+        if cmd.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "stop", "command"]);
+            remove_table_if_empty(&mut doc, &["profiles", profile, "stop"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "stop"])["command"] =
+                toml_edit::value(cmd.as_str());
+        }
     }
     if let Some(cmd) = &patch.restart_command {
-        ensure_table(&mut doc, &["profiles", profile, "restart"])["command"] =
-            toml_edit::value(cmd.as_str());
+        if cmd.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "restart", "command"]);
+            remove_table_if_empty(&mut doc, &["profiles", profile, "restart"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "restart"])["command"] =
+                toml_edit::value(cmd.as_str());
+        }
     }
     if let Some(p) = &patch.ready_pattern {
-        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_pattern"] =
-            toml_edit::value(p.as_str());
+        if p.trim().is_empty() {
+            remove_key(&mut doc, &["profiles", profile, "start", "ready_pattern"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "start"])["ready_pattern"] =
+                toml_edit::value(p.as_str());
+        }
     }
     if let Some(p) = patch.ready_port {
-        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_port"] =
-            toml_edit::value(p as i64);
+        if p == 0 {
+            remove_key(&mut doc, &["profiles", profile, "start", "ready_port"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "start"])["ready_port"] =
+                toml_edit::value(p as i64);
+        }
     }
     if let Some(ms) = patch.ready_timeout_ms {
-        ensure_table(&mut doc, &["profiles", profile, "start"])["ready_timeout_ms"] =
-            toml_edit::value(ms as i64);
+        if ms == 0 {
+            remove_key(&mut doc, &["profiles", profile, "start", "ready_timeout_ms"]);
+        } else {
+            ensure_table(&mut doc, &["profiles", profile, "start"])["ready_timeout_ms"] =
+                toml_edit::value(ms as i64);
+        }
     }
     for (kind, spec) in [
         ("quick", &patch.compile_quick),
@@ -314,10 +391,15 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         ("full", &patch.compile_full),
     ] {
         if let Some((cmd, parser)) = spec {
-            let t = ensure_table(&mut doc, &["profiles", profile, "compile", kind]);
-            t["command"] = toml_edit::value(cmd.as_str());
-            if let Some(p) = parser {
-                t["parser"] = toml_edit::value(p.as_str());
+            if cmd.trim().is_empty() {
+                remove_key(&mut doc, &["profiles", profile, "compile", kind]);
+                remove_table_if_empty(&mut doc, &["profiles", profile, "compile"]);
+            } else {
+                let t = ensure_table(&mut doc, &["profiles", profile, "compile", kind]);
+                t["command"] = toml_edit::value(cmd.as_str());
+                if let Some(p) = parser {
+                    t["parser"] = toml_edit::value(p.as_str());
+                }
             }
         }
     }

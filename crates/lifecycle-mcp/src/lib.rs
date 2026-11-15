@@ -86,7 +86,7 @@ pub fn tool_catalog() -> Vec<ToolInfo> {
         t("cancel_compile", "取消进行中的编译", "编译", "build"),
         t("reload_config", "重载 lifecycle.toml（默认不暴露给 AI）", "配置", "danger"),
         t("register_project", "注册/导入项目：探测工程并生成 lifecycle.toml", "配置", "danger"),
-        t("configure_service", "配置服务全部按钮命令：启动/快速启动/停止/重启/快速编译/部分编译/全量编译/端口/正则", "配置", "danger"),
+        t("configure_service", "配置服务全部按钮命令（不存在则创建，空串清空可选字段）：启动/快速启动/停止/重启/三档编译/端口/正则", "配置", "danger"),
         t("list_groups", "列出服务分组与成员", "分组", "read"),
         t("create_group", "新建服务分组", "分组", "control"),
         t("update_group", "更新分组名称或成员", "分组", "control"),
@@ -716,7 +716,7 @@ impl LifeCycleServer {
         .await
     }
 
-    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 7 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, plus workdir, env, ready_port, ready_pattern. Preserves existing formatting and reloads hot.")]
+    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 7 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, plus workdir, env, ready_port, ready_pattern. Omitted fields are unchanged; empty string (0 for port/timeout) clears an optional field. Preserves existing formatting and reloads hot.")]
     async fn configure_service(
         &self,
         Parameters(req): Parameters<ConfigureServiceReq>,

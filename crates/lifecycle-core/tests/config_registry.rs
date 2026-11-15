@@ -83,3 +83,63 @@ fn registry_add_dedup_remove_and_prune() {
     registry.prune().unwrap();
     assert!(Registry::new(tmp.path().join("projects.json")).paths().is_empty());
 }
+
+#[test]
+fn profile_patch_empty_string_clears_optional_keys() {
+    use lifecycle_core::config::{update_profile, ProfilePatch};
+    let tmp = tempfile::tempdir().unwrap();
+    let path = write(tmp.path());
+    let set = ProfilePatch {
+        workdir: Some("sub".into()),
+        fast_start_command: Some("echo fast".into()),
+        stop_command: Some("echo stop".into()),
+        restart_command: Some("echo restart".into()),
+        ready_pattern: Some("READY".into()),
+        ready_timeout_ms: Some(5000),
+        compile_partial: Some(("echo partial".into(), None)),
+        ..Default::default()
+    };
+    update_profile(&path, "default", &set).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    for needle in [
+        "workdir = \"sub\"",
+        "fast_command = \"echo fast\"",
+        "[profiles.default.stop]",
+        "[profiles.default.restart]",
+        "ready_pattern = \"READY\"",
+        "ready_timeout_ms = 5000",
+        "[profiles.default.compile.partial]",
+    ] {
+        assert!(text.contains(needle), "missing {needle}");
+    }
+
+    let clear = ProfilePatch {
+        workdir: Some("".into()),
+        fast_start_command: Some("".into()),
+        stop_command: Some("".into()),
+        restart_command: Some("".into()),
+        ready_pattern: Some("".into()),
+        ready_port: Some(0),
+        ready_timeout_ms: Some(0),
+        compile_quick: Some(("".into(), None)),
+        compile_partial: Some(("".into(), None)),
+        ..Default::default()
+    };
+    update_profile(&path, "default", &clear).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    for needle in [
+        "workdir",
+        "fast_command",
+        "[profiles.default.stop]",
+        "[profiles.default.restart]",
+        "ready_pattern",
+        "ready_port",
+        "ready_timeout_ms",
+        "[profiles.default.compile",
+    ] {
+        assert!(!text.contains(needle), "should be cleared: {needle}");
+    }
+    assert!(text.contains("command = \"echo hi\""), "start command preserved");
+    assert!(text.contains("# 启动命令"), "comments preserved");
+    Config::load(&path).unwrap();
+}
