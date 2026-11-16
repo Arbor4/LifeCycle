@@ -86,18 +86,24 @@ export default function CallRecords() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-2 sm:p-3 lg:grid-cols-4">
+      <div className="grid grid-cols-4 gap-1 border-b border-[var(--line)] bg-[var(--bg1)] p-1.5 sm:grid-cols-2 sm:gap-2 sm:p-3 lg:grid-cols-4">
         {tiles.map((tl) => (
-          <div key={tl.label} title={tl.title} className="panel flex items-center gap-3 px-3 py-2">
+          <div
+            key={tl.label}
+            title={tl.title}
+            className="panel flex flex-col items-center justify-center px-1 py-1.5 sm:flex-row sm:items-center sm:gap-3 sm:px-3 sm:py-2"
+          >
             <span
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
+              className="hidden h-8 w-8 flex-none items-center justify-center rounded-lg sm:flex"
               style={{ background: `color-mix(in oklab, var(--${tl.tone}) 14%, transparent)`, color: `var(--${tl.tone})` }}
             >
               <Icon name={tl.icon} size={15} />
             </span>
-            <span className="min-w-0">
-              <span className="mono block text-lg font-semibold leading-tight">{tl.value}</span>
-              <span className="block truncate text-[11px] text-[var(--dim)]">{tl.label}</span>
+            <span className="min-w-0 max-w-full">
+              <span className="mono block text-sm font-semibold leading-tight sm:text-lg">{tl.value}</span>
+              <span className="block truncate text-center text-[10px] text-[var(--dim)] sm:text-left sm:text-[11px]">
+                {tl.label}
+              </span>
             </span>
           </div>
         ))}
