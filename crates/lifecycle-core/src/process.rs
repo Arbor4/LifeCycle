@@ -237,6 +237,161 @@ pub fn kill_group(pid: u32) {
         .output();
 }
 
+/// 命令行是否属于 LifeCycle 的 stdio MCP server 入口之一。
+/// `exe` 为可执行文件基名（可带 .exe），`args` 为完整命令行。
+pub fn is_stdio_mcp(exe: &str, args: &str) -> bool {
+    let exe = exe.strip_suffix(".exe").unwrap_or(exe);
+    let has = |flag: &str| args.split_whitespace().any(|a| a == flag);
+    match exe {
+        "lifecycle-mcp" => true,
+        "lifecycle-app" => has("--mcp-stdio"),
+        "lifecycle" => has("--mcp"),
+        _ => false,
+    }
+}
+
+fn is_stdio_candidate(base: &str) -> bool {
+    matches!(base, "lifecycle-mcp" | "lifecycle-app" | "lifecycle")
+}
+
+/// 本机正在运行的 stdio MCP server 进程数（每个进程＝一个 AI 客户端连接）。
+/// 结果缓存 2s，避免 UI 轮询频繁 spawn 扫描命令。
+pub fn stdio_mcp_count() -> usize {
+    static CACHE: std::sync::Mutex<Option<(Instant, usize)>> = std::sync::Mutex::new(None);
+    let mut guard = CACHE.lock().unwrap();
+    if let Some((at, n)) = *guard {
+        if at.elapsed() < Duration::from_secs(2) {
+            return n;
+        }
+    }
+    let n = scan_stdio_mcp();
+    *guard = Some((Instant::now(), n));
+    n
+}
+
+#[cfg(unix)]
+fn scan_stdio_mcp() -> usize {
+    let out = match std::process::Command::new("ps")
+        .args(["-ax", "-o", "pid=,comm="])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return scan_proc_stdio(),
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut candidates: Vec<(u32, String)> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_start();
+        let Some((pid, comm)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        let Ok(pid) = pid.parse::<u32>() else { continue };
+        let base = comm.trim().rsplit('/').next().unwrap_or("");
+        if is_stdio_candidate(base) {
+            candidates.push((pid, base.to_string()));
+        }
+    }
+    if candidates.is_empty() {
+        return 0;
+    }
+    let pids = candidates
+        .iter()
+        .map(|(p, _)| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let Ok(args_out) = std::process::Command::new("ps")
+        .args(["-p", &pids, "-o", "pid=,args="])
+        .output()
+    else {
+        return 0;
+    };
+    let args_text = String::from_utf8_lossy(&args_out.stdout);
+    let mut args_by_pid: BTreeMap<u32, String> = BTreeMap::new();
+    for line in args_text.lines() {
+        let line = line.trim_start();
+        if let Some((pid, args)) = line.split_once(char::is_whitespace) {
+            if let Ok(pid) = pid.parse::<u32>() {
+                args_by_pid.insert(pid, args.to_string());
+            }
+        }
+    }
+    candidates
+        .iter()
+        .filter(|(pid, base)| {
+            let args = args_by_pid.get(pid).map(String::as_str).unwrap_or("");
+            is_stdio_mcp(base, args)
+        })
+        .count()
+}
+
+/// Linux 无 ps 时的兜底：直接读 /proc。
+#[cfg(unix)]
+fn scan_proc_stdio() -> usize {
+    let Ok(rd) = std::fs::read_dir("/proc") else {
+        return 0;
+    };
+    let mut n = 0;
+    for entry in rd.flatten() {
+        let name = entry.file_name();
+        let is_pid = name
+            .to_str()
+            .map(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or(false);
+        if !is_pid {
+            continue;
+        }
+        let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) else {
+            continue;
+        };
+        let base = comm.trim();
+        if !is_stdio_candidate(base) {
+            continue;
+        }
+        let Ok(cmdline) = std::fs::read(entry.path().join("cmdline")) else {
+            continue;
+        };
+        let args = cmdline
+            .split(|b| *b == 0)
+            .map(|s| String::from_utf8_lossy(s))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if is_stdio_mcp(base, &args) {
+            n += 1;
+        }
+    }
+    n
+}
+
+#[cfg(not(unix))]
+fn scan_stdio_mcp() -> usize {
+    let Ok(out) = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process | Select-Object Name,CommandLine | ConvertTo-Json -Compress",
+        ])
+        .output()
+    else {
+        return 0;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+        return 0;
+    };
+    let items = match value {
+        serde_json::Value::Array(a) => a,
+        obj @ serde_json::Value::Object(_) => vec![obj],
+        _ => return 0,
+    };
+    items
+        .iter()
+        .filter(|p| {
+            let name = p.get("Name").and_then(|v| v.as_str()).unwrap_or("");
+            let args = p.get("CommandLine").and_then(|v| v.as_str()).unwrap_or("");
+            is_stdio_mcp(name, args)
+        })
+        .count()
+}
+
 /// Windows: group children in a Job Object so the whole tree can be terminated
 /// even when the shell wrapper spawns grandchildren. The job handle lives in a
 /// process-local registry; cross-session stops fall back to taskkill /T.
@@ -554,5 +709,22 @@ ready_timeout_ms = 5000
         let loaded = store.load().unwrap();
         assert_eq!(loaded["default"].pid, 42);
         assert_eq!(loaded["default"].state, State::Running);
+    }
+
+    #[test]
+    fn stdio_mcp_argv_matching() {
+        assert!(is_stdio_mcp("lifecycle-mcp", "target/release/lifecycle-mcp -c a.toml"));
+        assert!(is_stdio_mcp(
+            "lifecycle-app",
+            "/x/LifeCycle.app/Contents/MacOS/lifecycle-app --mcp-stdio --config /x/a.toml"
+        ));
+        assert!(is_stdio_mcp("lifecycle", "target/release/lifecycle --mcp -c a.toml"));
+        assert!(is_stdio_mcp("lifecycle-app.exe", "C:\\x\\lifecycle-app.exe --mcp-stdio"));
+        // 桌面主进程 / HTTP 后端 / 普通 CLI 调用都不是 stdio 连接
+        assert!(!is_stdio_mcp("lifecycle-app", "/x/LifeCycle.app/Contents/MacOS/lifecycle-app"));
+        assert!(!is_stdio_mcp("lifecycle-http", "target/release/lifecycle-http --port 39517"));
+        assert!(!is_stdio_mcp("lifecycle", "target/release/lifecycle -c a.toml list"));
+        assert!(!is_stdio_mcp("node", "node lifecycle-mcp.js"));
+        assert!(!is_stdio_mcp("lifecycle-app", "/x/lifecycle-app --mcp-stdio-extra"));
     }
 }

@@ -257,7 +257,7 @@ The **Groups** page batches any number of `project/profile` pairs (e.g. "backend
 | Errors          | Structured diagnostics, click to jump to editor line/col; raw output as fallback                                                                                                                                                              |
 | Config          | Structured command form + raw lifecycle.toml editor (validate-before-write, hot reload, Ctrl/⌘+S); open-in-editor / copy                                                                                                                      |
 | Global settings | Language, theme, notification switch, editor jump command (VS Code/Cursor/IntelliJ/Vim presets), log buffer & timeouts; dirty-state save bar                                                                                                  |
-| MCP → Call log  | Global last-200 tool calls (shared by UI & MCP): success-rate / avg / MCP-count stats, filter by source and result, duration bars, live-refresh toggle; clicking a row opens a detail dialog with the full request & response JSON (copyable) |
+| MCP → Call log  | Global last-200 tool calls (shared by UI & MCP): success-rate / avg / live MCP-connection stats, filter by source and result, duration bars, live-refresh toggle; clicking a row opens a detail dialog with the full request & response JSON (copyable) |
 
 Shortcuts: `/` focus search, `n` add project, `Esc` close dialogs, `Enter` / `Shift+Enter` next/previous log match.
 Filters, sorting, search and partial-compile targets are remembered locally.
@@ -363,6 +363,7 @@ Default `http://127.0.0.1:39517`.
 | PUT/DELETE | `/api/groups/{id}`                                                              | Update / delete                                                                                      |           |                        |
 | POST       | \`/api/groups/{id}/start                                                        | stop                                                                                                 | restart\` | Group batch operations |
 | GET        | `/api/mcp`                                                                      | MCP overview: endpoint, stdio command, tool catalog, presets, global whitelist, client configs        |           |                        |
+| GET        | `/api/mcp/connections`                                                          | Live MCP connections: active HTTP sessions + local stdio server processes                             |           |                        |
 | PUT        | `/api/mcp/whitelist`                                                            | Write the global whitelist, hot-apply                                                                 |           |                        |
 | POST       | `/api/mcp/client-config`                                                        | Write/remove client config (merge + backup)                                                          |           |                        |
 | ANY        | `/mcp`                                                                          | MCP Streamable HTTP                                                                                  |           |                        |
@@ -433,6 +434,7 @@ node scripts/mcp-admin-e2e.mjs  # MCP register/configure/group tools end-to-end
 node scripts/http-add-service-e2e.mjs  # add-service API: create/validate/start/cleanup
 node scripts/http-clear-logs-e2e.mjs  # clear-logs API: truncate/keep-appending/scope validation
 node scripts/http-raw-config-e2e.mjs  # raw config save: hot reload / invalid TOML / workdir confinement
+node scripts/http-mcp-connections-e2e.mjs  # live MCP connections: stdio process / HTTP session deltas
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 

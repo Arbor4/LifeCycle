@@ -249,6 +249,13 @@ fn configured(client: &Client) -> bool {
     }
 }
 
+/// 真实连接数：HTTP 活跃会话 + 本机 stdio MCP server 进程。
+pub async fn connections(State(state): State<Arc<AppState>>) -> ApiResult {
+    let http = state.mcp_sessions.sessions.read().await.len();
+    let stdio = lifecycle_core::process::stdio_mcp_count();
+    Ok(Json(json!({ "http": http, "stdio": stdio, "total": http + stdio })))
+}
+
 pub async fn info(State(state): State<Arc<AppState>>) -> ApiResult {
     let (exe, base_args, kind) = stdio_command();
     let mut config_args = base_args.clone();

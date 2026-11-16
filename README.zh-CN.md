@@ -248,7 +248,7 @@ stop_timeout_ms = 5000              # SIGTERM 后的宽限期，超时 SIGKILL �
 | 错误 | 结构化诊断列表，点击跳编辑器行列；原始输出兜底展示 |
 | 配置 | 结构化命令表单 + lifecycle.toml 原文直接编辑（先校验后写盘、热加载、Ctrl/⌘+S）；一键在编辑器打开 / 复制 |
 | 全局设置 | 主题、系统通知开关、编辑器跳转命令（含 VS Code/Cursor/IntelliJ/Vim 预设）、日志缓冲与超时；脏标记保存栏 |
-| MCP → 调用记录 | 全局最近 200 次工具调用（UI 与 MCP 共用）：成功率/平均/MCP 数统计、按来源与结果筛选、耗时条形、实时刷新；点击行打开详情弹窗，含完整请求/响应 JSON（可复制） |
+| MCP → 调用记录 | 全局最近 200 次工具调用（UI 与 MCP 共用）：成功率/平均/真实 MCP 连接数统计、按来源与结果筛选、耗时条形、实时刷新；点击行打开详情弹窗，含完整请求/响应 JSON（可复制） |
 
 快捷键：`/` 聚焦搜索，`n` 新建服务，`Esc` 关闭弹窗，日志搜索框 `Enter` / `Shift+Enter` 上下匹配。
 筛选、排序、搜索与部分编译目标都会本地记住。
@@ -352,6 +352,7 @@ stdio 片段会注入当前 `PATH`，保证从 GUI 客户端拉起时能找到 n
 | PUT/DELETE | `/api/groups/{id}` | 更新 / 删除 |
 | POST | `/api/groups/{id}/start|stop|restart` | 分组批量操作 |
 | GET | `/api/mcp` | MCP 总览：端点、stdio 命令、工具目录、预设、全局白名单、客户端配置 |
+| GET | `/api/mcp/connections` | 真实 MCP 连接数：HTTP 活跃会话 + 本机 stdio server 进程 |
 | PUT | `/api/mcp/whitelist` | 写全局白名单并热生效 |
 | POST | `/api/mcp/client-config` | 写入/移除客户端配置（合并 + 备份） |
 | ANY | `/mcp` | MCP Streamable HTTP |
@@ -422,6 +423,7 @@ node scripts/mcp-admin-e2e.mjs  # MCP 注册/配置/分组工具端到端
 node scripts/http-add-service-e2e.mjs  # 添加服务 API：创建/校验/启动/清理
 node scripts/http-clear-logs-e2e.mjs  # 清空日志 API：截断/继续写入/范围校验
 node scripts/http-raw-config-e2e.mjs  # 原文保存：热加载/非法 TOML 拒写/workdir 越界拒写
+node scripts/http-mcp-connections-e2e.mjs  # 真实连接数：stdio 进程 / HTTP 会话增量
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 

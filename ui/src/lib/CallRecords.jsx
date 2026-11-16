@@ -19,6 +19,7 @@ const pretty = (v) => {
 export default function CallRecords() {
   const { t } = useI18n();
   const [records, setRecords] = useState([]);
+  const [conn, setConn] = useState({ http: 0, stdio: 0, total: 0 });
   const [live, setLive] = useState(true);
   const [source, setSource] = useState("all");
   const [result, setResult] = useState("all");
@@ -27,8 +28,12 @@ export default function CallRecords() {
 
   const load = useCallback(async () => {
     try {
-      const d = await api("/api/diagnostics");
+      const [d, c] = await Promise.all([
+        api("/api/diagnostics"),
+        api("/api/mcp/connections").catch(() => null),
+      ]);
       setRecords(d.slice().reverse());
+      if (c) setConn(c);
       setUpdatedAt(Date.now());
     } catch {
       // 后端未就绪时静默
@@ -57,8 +62,7 @@ export default function CallRecords() {
     const total = records.length;
     const ok = records.filter((r) => r.exit_code === 0).length;
     const avg = total ? Math.round(records.reduce((n, r) => n + r.duration_ms, 0) / total) : 0;
-    const mcp = records.filter((r) => r.source === "mcp").length;
-    return { total, rate: total ? Math.round((ok / total) * 100) : 100, avg, mcp };
+    return { total, rate: total ? Math.round((ok / total) * 100) : 100, avg };
   }, [records]);
 
   async function copy(value, label) {
@@ -71,14 +75,20 @@ export default function CallRecords() {
     { label: t("总调用"), value: stats.total, icon: "diag", tone: "blu" },
     { label: t("成功率"), value: `${stats.rate}%`, icon: "check", tone: stats.rate >= 90 ? "grn" : "amb" },
     { label: t("平均耗时"), value: `${stats.avg}ms`, icon: "clock", tone: "cyn" },
-    { label: "MCP", value: stats.mcp, icon: "plug", tone: "vio" },
+    {
+      label: t("MCP 连接"),
+      value: conn.total,
+      icon: "plug",
+      tone: "vio",
+      title: t("HTTP {h} · stdio {s}", { h: conn.http, s: conn.stdio }),
+    },
   ];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-2 sm:p-3 lg:grid-cols-4">
         {tiles.map((tl) => (
-          <div key={tl.label} className="panel flex items-center gap-3 px-3 py-2">
+          <div key={tl.label} title={tl.title} className="panel flex items-center gap-3 px-3 py-2">
             <span
               className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
               style={{ background: `color-mix(in oklab, var(--${tl.tone}) 14%, transparent)`, color: `var(--${tl.tone})` }}

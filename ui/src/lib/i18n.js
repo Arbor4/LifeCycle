@@ -302,6 +302,8 @@ const EN = {
   总调用: "Calls",
   成功率: "Success rate",
   平均耗时: "Avg duration",
+  "MCP 连接": "MCP connections",
+  "HTTP {h} · stdio {s}": "HTTP {h} · stdio {s}",
   最慢一次: "Slowest",
   全部工具: "All tools",
   全部结果: "All results",

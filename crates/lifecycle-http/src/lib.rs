@@ -56,6 +56,7 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     pub settings_path: PathBuf,
     pub port: u16,
+    pub mcp_sessions: Arc<lifecycle_mcp::LocalSessionManager>,
 }
 
 impl AppState {
@@ -70,6 +71,7 @@ impl AppState {
             settings: Mutex::new(settings),
             settings_path,
             port: 39517,
+            mcp_sessions: Arc::new(lifecycle_mcp::LocalSessionManager::default()),
         }
     }
 
@@ -151,7 +153,8 @@ where
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
-    let mcp_service = lifecycle_mcp::streamable_http_service(state.ws.clone());
+    let mcp_service =
+        lifecycle_mcp::streamable_http_service(state.ws.clone(), state.mcp_sessions.clone());
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/projects", get(list_projects))
@@ -173,6 +176,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/reveal-path", post(reveal_path))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/mcp", get(mcp_admin::info))
+        .route("/api/mcp/connections", get(mcp_admin::connections))
         .route("/api/mcp/whitelist", put(mcp_admin::put_policy))
         .route("/api/mcp/client-config", post(mcp_admin::client_config))
         .route("/api/diagnostics", get(get_diagnostics))

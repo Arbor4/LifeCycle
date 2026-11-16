@@ -992,19 +992,18 @@ impl ServerHandler for LifeCycleServer {
 }
 
 pub use lifecycle_core::workspace::scan_projects;
+pub use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 
 /// Streamable HTTP + SSE transport, mountable into any tower/axum router.
+/// 会话管理器由调用方持有，以便读取活跃会话数（真实连接数）。
 pub fn streamable_http_service(
     core: Arc<lifecycle_core::workspace::Workspace>,
-) -> rmcp::transport::streamable_http_server::StreamableHttpService<
-    LifeCycleServer,
-    rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
-> {
+    sessions: Arc<LocalSessionManager>,
+) -> rmcp::transport::streamable_http_server::StreamableHttpService<LifeCycleServer, LocalSessionManager>
+{
     rmcp::transport::streamable_http_server::StreamableHttpService::new(
         move || Ok(LifeCycleServer::new(Arc::new(Workspace::from_core(core.clone())))),
-        Arc::new(
-            rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default(),
-        ),
+        sessions,
         rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
     )
 }
