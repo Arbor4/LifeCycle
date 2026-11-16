@@ -78,7 +78,12 @@ fn main() {
             let show = MenuItem::with_id(app, "show", "显示 LifeCycle", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            let logo = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/trayTemplate.png"
+            ))?;
             let tray = TrayIconBuilder::new()
+                .icon(logo.clone())
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -149,6 +154,7 @@ fn main() {
             let ws_monitor = ws.clone();
             tauri::async_runtime::spawn(async move {
                 let mut prev: HashMap<String, (String, Option<u64>, bool)> = HashMap::new();
+                let mut prev_running: Option<usize> = None;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     let notifications_on = std::fs::read_to_string(
@@ -197,7 +203,25 @@ fn main() {
                             prev.insert(key, (state, build_ts, build_ok));
                         }
                     }
-                    let _ = tray.set_title(Some(format!("▶{running}")));
+                    // 运行中只显 ▶n（更窄、信息更直接），全部停止时回落到 logo。
+                    if prev_running != Some(running) {
+                        match (prev_running.unwrap_or(0) > 0, running > 0) {
+                            (false, true) => {
+                                let _ = tray.set_icon(None);
+                            }
+                            (true, false) => {
+                                let _ = tray.set_icon(Some(logo.clone()));
+                                let _ = tray.set_icon_as_template(true);
+                            }
+                            _ => {}
+                        }
+                        let _ = tray.set_title(if running > 0 {
+                            Some(format!("▶{running}"))
+                        } else {
+                            None
+                        });
+                        prev_running = Some(running);
+                    }
                 }
             });
 

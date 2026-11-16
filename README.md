@@ -457,7 +457,7 @@ cargo build --release -p lifecycle-app --features custom-protocol
 **`--features custom-protocol` is required**: otherwise Tauri uses `devUrl:5173` and the bundle would talk to a dev server instead of the embedded frontend.
 If you changed `ui/dist` but the bundle didn't update, `touch crates/lifecycle-app/tauri.conf.json crates/lifecycle-app/build.rs` first (cargo does not re-embed the frontend automatically).
 
-App icons are generated from the same mark as `docs/logo.svg` and the sidebar logo: `node scripts/gen-icons.mjs` (QuickLook + sips + iconutil).
+App icons are generated from the same mark as `docs/logo.svg` and the sidebar logo: `node scripts/gen-icons.mjs` (headless Chrome transparent rasterization + sips + iconutil; corners stay alpha-transparent, multi-size PNG `.ico`, monochrome tray template).
 
 Artifacts: `.app` / `.dmg` under `target/release/bundle/` (macOS) or the platform installer.
 The packaged app binary supports `--mcp-stdio`, so it can be used directly as the stdio command for Claude/Cursor.

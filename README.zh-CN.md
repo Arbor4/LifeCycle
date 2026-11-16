@@ -446,7 +446,7 @@ cargo build --release -p lifecycle-app --features custom-protocol
 **必须带 `--features custom-protocol`**：否则 Tauri 走 `devUrl:5173`，打包产物会连到开发服务器而不是内嵌前端。
 若改了 `ui/dist` 但产物没更新，先 `touch crates/lifecycle-app/tauri.conf.json crates/lifecycle-app/build.rs` 再构建（cargo 缓存不会自动重嵌前端）。
 
-应用图标与 `docs/logo.svg`、侧边栏 logo 同源：`node scripts/gen-icons.mjs`（QuickLook + sips + iconutil）。
+应用图标与 `docs/logo.svg`、侧边栏 logo 同源：`node scripts/gen-icons.mjs`（headless Chrome 透明光栅化 + sips + iconutil；圆角外全透明、多尺寸 PNG `.ico`、单色托盘模板图）。
 
 产物：`target/release/bundle/` 下的 `.app` / `.dmg`（macOS）或对应平台安装包。
 打包后的 App 二进制自带 `--mcp-stdio`，可直接作为 Claude/Cursor 的 stdio 命令。
