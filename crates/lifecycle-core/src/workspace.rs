@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::diagnostics::CallLog;
@@ -11,12 +12,35 @@ use crate::groups::{new_id, Group, GroupMember, GroupStore};
 use crate::logs::LogHub;
 use crate::registry::Registry;
 
+/// 全局 MCP 白名单：LifeCycle 自身的管理面配置，与被管项目无关。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPolicy {
+    #[serde(default = "default_mcp_transport")]
+    pub transport: String,
+    #[serde(default)]
+    pub expose: Vec<String>,
+}
+
+impl Default for McpPolicy {
+    fn default() -> Self {
+        Self {
+            transport: default_mcp_transport(),
+            expose: Vec::new(),
+        }
+    }
+}
+
+fn default_mcp_transport() -> String {
+    "both".into()
+}
+
 /// Multi-project holder shared by MCP, HTTP and the desktop app.
 /// Projects can be registered/unregistered at runtime; registrations persist
 /// in ~/.lifecycle/projects.json so they survive a restart.
 pub struct Workspace {
     engines: Mutex<HashMap<String, Arc<AsyncMutex<Engine>>>>,
-    expose: Mutex<HashMap<String, Vec<String>>>,
+    mcp: Mutex<McpPolicy>,
+    mcp_path: PathBuf,
     paths: Mutex<HashMap<String, PathBuf>>,
     hubs: Mutex<HashMap<String, LogHub>>,
     registry: Registry,
@@ -53,9 +77,15 @@ impl Workspace {
             let _ = registry.prune();
         }
         let groups = GroupStore::new(home().join(".lifecycle").join("groups.json"));
+        let mcp_path = home().join(".lifecycle").join("mcp.json");
+        let mcp = std::fs::read_to_string(&mcp_path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<McpPolicy>(&text).ok())
+            .unwrap_or_default();
         let ws = Self {
             engines: Mutex::new(HashMap::new()),
-            expose: Mutex::new(HashMap::new()),
+            mcp: Mutex::new(mcp),
+            mcp_path,
             paths: Mutex::new(HashMap::new()),
             hubs: Mutex::new(HashMap::new()),
             registry,
@@ -127,10 +157,6 @@ impl Workspace {
         if engines.contains_key(&name) {
             return Err(Error::Busy(format!("project '{name}' already registered")));
         }
-        self.expose
-            .lock()
-            .unwrap()
-            .insert(name.clone(), engine.mcp_expose().to_vec());
         self.paths
             .lock()
             .unwrap()
@@ -155,7 +181,6 @@ impl Workspace {
         engines
             .remove(name)
             .ok_or_else(|| Error::NotFound(format!("project '{name}'")))?;
-        self.expose.lock().unwrap().remove(name);
         self.hubs.lock().unwrap().remove(name);
         if let Some(path) = self.paths.lock().unwrap().remove(name) {
             let _ = self.registry.remove(&path);
@@ -224,18 +249,27 @@ impl Workspace {
             .collect()
     }
 
-    /// Update the cached expose whitelist after a config reload.
-    pub fn set_expose(&self, project: &str, expose: Vec<String>) {
-        self.expose.lock().unwrap().insert(project.to_string(), expose);
+    pub fn mcp_policy(&self) -> McpPolicy {
+        self.mcp.lock().unwrap().clone()
     }
 
-    pub fn expose(&self, project: &str) -> Vec<String> {
-        self.expose
-            .lock()
-            .unwrap()
-            .get(project)
-            .cloned()
-            .unwrap_or_default()
+    pub fn mcp_policy_path(&self) -> &Path {
+        &self.mcp_path
+    }
+
+    /// Persist the global whitelist; new MCP sessions pick it up immediately.
+    pub fn set_mcp_policy(&self, policy: McpPolicy) -> Result<()> {
+        if let Some(parent) = self.mcp_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp = self.mcp_path.with_extension("json.tmp");
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(&policy).map_err(|e| Error::Other(e.to_string()))?,
+        )?;
+        std::fs::rename(&tmp, &self.mcp_path)?;
+        *self.mcp.lock().unwrap() = policy;
+        Ok(())
     }
 }
 

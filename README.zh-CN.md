@@ -32,7 +32,7 @@
 
 - 桌面端：Tauri 2 + React 19 + Tailwind CSS v4 + lucide-react（亮 / 暗 / 跟随系统三套主题）
 - 后端：Rust workspace（core / cli / mcp / http / app）
-- AI 接入：MCP stdio + Streamable HTTP，22 个工具，按项目配置暴露白名单
+- AI 接入：MCP stdio + Streamable HTTP，22 个工具，全局统一暴露白名单
 - 日志：ANSI 终端色 + Spring Boot 风格语义高亮，链接 ⌘/Ctrl+点击直达
 - 无外部依赖：不需要数据库、不需要 Docker，状态落在项目内 `.lifecycle/` 与 `~/.lifecycle/`
 
@@ -85,7 +85,7 @@
 
 **AI / 自动化**
 -  MCP 22 工具，stdio 与 Streamable HTTP 双传输。
--  按项目 `[mcp].expose` 白名单控制 AI 可见工具；`reload_config` 默认不暴露。
+-  全局唯一白名单（MCP 页，存于 `~/.lifecycle/mcp.json`）控制 AI 对所有被管项目可见的工具；`reload_config` 默认不暴露。
 -  一键生成 / 写入 Claude Desktop、Cursor、VS Code、Codex CLI、Gemini CLI 的接入配置（保留原有内容、自动备份、可撤销）。
 -  控制台内真实 MCP 握手"测试连接"，直接列出 AI 此刻能看到的工具。
 -  AI 可通过 MCP 创建/配置项目与服务（启动命令、编译命令、端口），并控制服务分组。
@@ -202,14 +202,10 @@ color = true                        # 强制子进程输出 ANSI 终端色（FOR
 
 [process]
 stop_timeout_ms = 5000              # SIGTERM 后的宽限期，超时 SIGKILL 整组
-
-[mcp]
-transport = "stdio"                 # stdio | http | both（声明用途，见 MCP 章节）
-expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名单
 ```
 
 要点：
-- `expose` 为空表示**默认白名单**＝除 `reload_config` 外全部；支持 `前缀*` 通配。
+- MCP 白名单为**全局**配置，在 MCP 页管理；空选择回退默认策略（除 `reload_config` 外全部），支持 `前缀*` 通配。
 - `partial` 命令中的 `{targets}` 会被替换为逗号连接的目标列表。
 - 改完配置在界面点「重载配置」或调 `reload_config`，无需重启进程管理。
 
@@ -288,7 +284,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 
 ### 白名单
 
-在「MCP 配置」页按项目勾选（大号勾选框、按 查询/进程/编译/配置 分组、组级全选/半选），或直接用预设：
+在「MCP 配置」页勾选（大号勾选框、按 查询/进程/编译/配置 分组、组级全选/半选），或直接用预设：
 
 | 预设 | 含义 |
 | --- | --- |
@@ -297,7 +293,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 | 只读 + 编译 | 允许 AI 编译修错，不允许动进程 |
 | 全部 | 含 reload_config，谨慎 |
 
-保存即写入该项目 `lifecycle.toml` 的 `[mcp]` 段（**其余内容与注释原样保留**），热生效；新的 MCP 会话立即按新白名单路由工具。
+保存即写入 LifeCycle 自身的 `~/.lifecycle/mcp.json`——整个工具一份白名单，对所有被管项目生效——热生效；新的 MCP 会话立即按新白名单路由工具。被管项目 `lifecycle.toml` 里遗留的 `[mcp]` 段仍可解析但不再起作用。
 注意：空白名单会回退到默认策略，因此界面禁止保存"全不选"，避免"看起来全关其实全开"。
 
 ### 客户端接入
@@ -355,8 +351,8 @@ stdio 片段会注入当前 `PATH`，保证从 GUI 客户端拉起时能找到 n
 | GET/POST | `/api/groups` | 分组列表 / 新建 |
 | PUT/DELETE | `/api/groups/{id}` | 更新 / 删除 |
 | POST | `/api/groups/{id}/start|stop|restart` | 分组批量操作 |
-| GET | `/api/mcp` | MCP 总览：端点、stdio 命令、工具目录、预设、各项目白名单、客户端配置 |
-| PUT | `/api/mcp/projects/{project}` | 写 `[mcp]` 白名单并热生效 |
+| GET | `/api/mcp` | MCP 总览：端点、stdio 命令、工具目录、预设、全局白名单、客户端配置 |
+| PUT | `/api/mcp/whitelist` | 写全局白名单并热生效 |
 | POST | `/api/mcp/client-config` | 写入/移除客户端配置（合并 + 备份） |
 | ANY | `/mcp` | MCP Streamable HTTP |
 
@@ -404,12 +400,13 @@ headless 多项目：`lifecycle-http -c a.toml -c b.toml --port 39517` 或 `--sc
 
 | 位置 | 内容 |
 | --- | --- |
-| `<project>/lifecycle.toml` | 项目配置（命令、就绪、编译、MCP 白名单） |
+| `<project>/lifecycle.toml` | 项目配置（命令、就绪、编译） |
 | `<project>/.lifecycle/state.json` | 进程状态持久化 |
 | `<project>/.lifecycle/builds.json` | 编译历史 |
 | `<project>/.lifecycle/logs/` | 运行 / 编译日志 |
 | `~/.lifecycle/settings.json` | 全局设置（主题、通知、编辑器、超时） |
 | `~/.lifecycle/groups.json` | 服务分组 |
+| `~/.lifecycle/mcp.json` | 全局 MCP 白名单 + 传输偏好 |
 | `~/.lifecycle/projects.json` | 已注册服务清单（重启不丢） |
 
 ---

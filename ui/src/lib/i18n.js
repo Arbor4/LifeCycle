@@ -191,8 +191,8 @@ const EN = {
   同时声明两种传输: "Declare both transports",
   两者: "Both",
   快速预设: "Presets",
-  "写入 {path} 的 [mcp] 段，其余配置与注释保持不变；新的 MCP 会话立即生效。":
-    "Writes the [mcp] table of {path}; everything else (including comments) is preserved. New MCP sessions pick it up immediately.",
+  "全局唯一白名单：保存到 {path}，对所有项目生效；新的 MCP 会话立即生效。":
+    "One global whitelist: saved to {path}, applies to every project. New MCP sessions pick it up immediately.",
   工具白名单: "Tool whitelist",
   "AI 可见 {a}/{b}": "AI sees {a}/{b}",
   "空白名单会回退到默认策略（除 reload_config 外全部开放）。请至少勾选一个工具后再保存。":
@@ -227,9 +227,8 @@ const EN = {
   写入配置: "Write config",
   移除: "Remove",
   白名单有未保存的更改: "Unsaved whitelist changes",
-  "{sel} · {n} 工具": "{sel} · {n} tools",
-  "保存到 lifecycle.toml": "Save to lifecycle.toml",
-  "已写入 {path} · {n} 个工具对 AI 可见": "Wrote {path} · {n} tools visible to AI",
+  保存白名单: "Save whitelist",
+  "已保存 · {n} 个工具对 AI 可见": "Saved · {n} tools visible to AI",
   "已套用预设「{name}」，记得保存": "Preset “{name}” applied — remember to save",
   已复制到剪贴板: "Copied to clipboard",
   "复制失败，请手动选择文本": "Copy failed — select the text manually",
@@ -345,8 +344,6 @@ const EN = {
   点击在编辑器中打开: "Click to open in editor",
   在编辑器中打开: "Open in editor",
   配置已复制: "Config copied",
-  "启动命令在 {a}，编译命令在 {b}，MCP 白名单在 {c}；改完点上方「重载配置」即可生效，无需重启。":
-    "Start commands live in {a}, compile commands in {b}, MCP whitelist in {c}. Click “Reload config” above to apply without restarting.",
   // App
   "无法连接后端：{msg}": "Cannot reach backend: {msg}",
   "请确认 LifeCycle 后端已启动（默认端口 39517），或运行 {cmd}。":

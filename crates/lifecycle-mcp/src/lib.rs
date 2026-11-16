@@ -128,18 +128,8 @@ impl Workspace {
         }
     }
 
-    fn tool_allowed(&self, expose: &[String], tool: &str) -> bool {
-        tool_matches(expose, tool)
-    }
-
-    fn any_allows(&self, tool: &str) -> bool {
-        let names = self.core.names();
-        if names.is_empty() {
-            return tool != "reload_config";
-        }
-        names
-            .iter()
-            .any(|name| self.tool_allowed(&self.core.expose(name), tool))
+    fn allows(&self, tool: &str) -> bool {
+        tool_matches(&self.core.mcp_policy().expose, tool)
     }
 }
 
@@ -243,21 +233,18 @@ impl LifeCycleServer {
     pub fn new(ws: Arc<Workspace>) -> Self {
         let mut tool_router = Self::tool_router();
         for tool in ALL_TOOLS {
-            if !ws.any_allows(tool) {
+            if !ws.allows(tool) {
                 tool_router.remove_route(tool);
             }
         }
         Self { tool_router, ws }
     }
 
-    fn check_expose(&self, project: &str, tool: &str) -> lifecycle_core::Result<()> {
-        let expose = self.ws.core.expose(project);
-        if self.ws.tool_allowed(&expose, tool) {
+    fn check_expose(&self, tool: &str) -> lifecycle_core::Result<()> {
+        if self.ws.allows(tool) {
             Ok(())
         } else {
-            Err(Error::NotFound(format!(
-                "tool '{tool}' is not exposed for project '{project}'"
-            )))
+            Err(Error::NotFound(format!("tool '{tool}' is not exposed")))
         }
     }
 
@@ -448,7 +435,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("get_status", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "get_status")?;
+            self.check_expose("get_status")?;
             let engine = self.ws.core.engine(&project)?;
             let mut guard = engine.lock().await;
             Ok(serde_json::to_value(guard.status(&req.profile)?)?)
@@ -464,7 +451,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("start_project", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "start_project")?;
+            self.check_expose("start_project")?;
             let engine = self.ws.core.engine(&project)?;
             let mut guard = engine.lock().await;
             let outcome = guard
@@ -483,7 +470,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("stop_project", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "stop_project")?;
+            self.check_expose("stop_project")?;
             let engine = self.ws.core.engine(&project)?;
             let timeout = if req.signal.as_deref() == Some("kill") {
                 Some(0)
@@ -505,7 +492,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("restart_project", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "restart_project")?;
+            self.check_expose("restart_project")?;
             let engine = self.ws.core.engine(&project)?;
             let mut guard = engine.lock().await;
             if req.recompile {
@@ -537,7 +524,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("compile_quick", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "compile_quick")?;
+            self.check_expose("compile_quick")?;
             let engine = self.ws.core.engine(&project)?;
             let mut run = {
                 let mut guard = engine.lock().await;
@@ -569,7 +556,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("compile_partial", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "compile_partial")?;
+            self.check_expose("compile_partial")?;
             let engine = self.ws.core.engine(&project)?;
             let mut run = {
                 let mut guard = engine.lock().await;
@@ -601,7 +588,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("compile_full", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "compile_full")?;
+            self.check_expose("compile_full")?;
             let engine = self.ws.core.engine(&project)?;
             let mut run = {
                 let mut guard = engine.lock().await;
@@ -633,7 +620,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("compile_package", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "compile_package")?;
+            self.check_expose("compile_package")?;
             let engine = self.ws.core.engine(&project)?;
             let mut run = {
                 let mut guard = engine.lock().await;
@@ -665,7 +652,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("cancel_compile", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "cancel_compile")?;
+            self.check_expose("cancel_compile")?;
             let engine = self.ws.core.engine(&project)?;
             let cancelled = engine.lock().await.cancel_compile(&req.profile)?;
             Ok(json!({"cancelled": cancelled}))
@@ -681,7 +668,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("get_logs", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "get_logs")?;
+            self.check_expose("get_logs")?;
             let engine = self.ws.core.engine(&project)?;
             let watch_key = format!("{}/{}/{}", project, req.profile, req.source);
             let since = match req.since {
@@ -713,7 +700,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("watch_logs", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "watch_logs")?;
+            self.check_expose("watch_logs")?;
             let engine = self.ws.core.engine(&project)?;
             let cursor = engine.lock().await.log_len(&req.profile, &req.source)?;
             let watch_key = format!("{}/{}/{}", project, req.profile, req.source);
@@ -731,14 +718,8 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("reload_config", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "reload_config")?;
-            let engine = self.ws.core.engine(&project)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            self.ws.core.set_expose(&project, expose);
+            self.check_expose("reload_config")?;
+            self.ws.core.engine(&project)?.lock().await.reload_config()?;
             Ok(json!({"ok": true}))
         })
         .await
@@ -751,7 +732,7 @@ impl LifeCycleServer {
     ) -> Result<Json<Value>, ErrorData> {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("register_project", input, async {
-            if !self.ws.any_allows("register_project") {
+            if !self.ws.allows("register_project") {
                 return Err(Error::NotFound("tool 'register_project' is not exposed".into()));
             }
             let root = std::fs::canonicalize(&req.path)
@@ -796,7 +777,7 @@ impl LifeCycleServer {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("configure_service", input, async {
             let project = self.ws.core.resolve_project(&req.project)?;
-            self.check_expose(&project, "configure_service")?;
+            self.check_expose("configure_service")?;
             let engine = self.ws.core.engine(&project)?;
             let path = engine.lock().await.config_path().to_path_buf();
             let patch = lifecycle_core::config::ProfilePatch {
@@ -817,12 +798,7 @@ impl LifeCycleServer {
                 compile_package: req.compile_package.map(|s| s.into_parts()),
             };
             lifecycle_core::config::update_profile(&path, &req.profile, &patch)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            self.ws.core.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "project": project, "profile": req.profile, "config_path": path}))
         })
         .await
@@ -831,7 +807,7 @@ impl LifeCycleServer {
     #[tool(description = "List service groups with their members.")]
     async fn list_groups(&self) -> Result<Json<Value>, ErrorData> {
         self.traced("list_groups", json!({}), async {
-            if !self.ws.any_allows("list_groups") {
+            if !self.ws.allows("list_groups") {
                 return Err(Error::NotFound("tool 'list_groups' is not exposed".into()));
             }
             Ok(serde_json::to_value(self.ws.core.groups().load()?)?)
@@ -846,7 +822,7 @@ impl LifeCycleServer {
     ) -> Result<Json<Value>, ErrorData> {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("create_group", input, async {
-            if !self.ws.any_allows("create_group") {
+            if !self.ws.allows("create_group") {
                 return Err(Error::NotFound("tool 'create_group' is not exposed".into()));
             }
             let members: Vec<lifecycle_core::groups::GroupMember> = req
@@ -876,7 +852,7 @@ impl LifeCycleServer {
     ) -> Result<Json<Value>, ErrorData> {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("update_group", input, async {
-            if !self.ws.any_allows("update_group") {
+            if !self.ws.allows("update_group") {
                 return Err(Error::NotFound("tool 'update_group' is not exposed".into()));
             }
             let mut groups = self.ws.core.groups().load()?;
@@ -908,7 +884,7 @@ impl LifeCycleServer {
     ) -> Result<Json<Value>, ErrorData> {
         let input = serde_json::to_value(&req).unwrap_or_default();
         self.traced("delete_group", input, async {
-            if !self.ws.any_allows("delete_group") {
+            if !self.ws.allows("delete_group") {
                 return Err(Error::NotFound("tool 'delete_group' is not exposed".into()));
             }
             let mut groups = self.ws.core.groups().load()?;
@@ -962,7 +938,7 @@ impl LifeCycleServer {
 
 impl LifeCycleServer {
     async fn run_group(&self, id: &str, op: &str, wait: bool) -> lifecycle_core::Result<Value> {
-        if !self.ws.any_allows(&format!("{op}_group")) {
+        if !self.ws.allows(&format!("{op}_group")) {
             return Err(Error::NotFound(format!("tool '{op}_group' is not exposed")));
         }
         let groups = self.ws.core.groups().load()?;

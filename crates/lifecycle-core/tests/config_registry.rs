@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use lifecycle_core::config::update_mcp_section;
 use lifecycle_core::registry::Registry;
 use lifecycle_core::Config;
 
@@ -23,40 +22,20 @@ fn write(dir: &std::path::Path) -> PathBuf {
 }
 
 #[test]
-fn mcp_section_rewrite_keeps_other_sections_and_comments() {
+fn legacy_mcp_section_still_parses_but_is_inert() {
     let tmp = tempfile::tempdir().unwrap();
     let path = write(tmp.path());
-
-    update_mcp_section(&path, "http", &["get_logs".into(), "compile_*".into()]).unwrap();
-
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("# 项目配置"), "顶层注释应保留");
-    assert!(text.contains("# 启动命令"), "行内注释应保留");
-    assert!(text.contains("ready_port = 18099"));
-    assert!(text.contains("command = \"echo build\""));
-    assert!(text.contains("transport = \"http\""));
-    assert!(text.contains("\"compile_*\""));
+    std::fs::write(
+        &path,
+        format!("{text}\n[mcp]\ntransport = \"http\"\nexpose = [\"get_logs\", \"compile_*\"]\n"),
+    )
+    .unwrap();
 
+    // 旧配置的 [mcp] 段仍可加载（白名单已全局化，不再按项目生效）。
     let cfg = Config::load(&path).unwrap();
-    assert_eq!(cfg.mcp.transport, "http");
-    assert_eq!(cfg.mcp.expose, vec!["get_logs", "compile_*"]);
+    cfg.validate().unwrap();
     assert_eq!(cfg.project.name, "demo");
-
-    // 二次改写只更新 [mcp]，不重复追加表。
-    update_mcp_section(&path, "stdio", &["get_status".into()]).unwrap();
-    let text2 = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(text2.matches("[mcp]").count(), 1);
-    assert!(!text2.contains("compile_*"));
-    assert_eq!(Config::load(&path).unwrap().mcp.expose, vec!["get_status"]);
-}
-
-#[test]
-fn mcp_section_rejects_unknown_transport() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = write(tmp.path());
-    let err = update_mcp_section(&path, "carrier-pigeon", &[]).unwrap_err();
-    assert_eq!(err.code(), "CONFIG");
-    assert!(std::fs::read_to_string(&path).unwrap().contains("echo hi"));
 }
 
 #[test]

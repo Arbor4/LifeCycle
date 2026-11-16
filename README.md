@@ -33,7 +33,7 @@ Start / stop / restart, three compile granularities (quick / partial / full), st
 
 * Desktop: Tauri 2 + React 19 + Tailwind CSS v4 + lucide-react (light / dark / system themes)
 * Backend: Rust workspace (core / cli / mcp / http / app)
-* AI: MCP over stdio + Streamable HTTP, 22 tools, per-project expose whitelist
+* AI: MCP over stdio + Streamable HTTP, 22 tools, one global expose whitelist
 * Logs: ANSI terminal colors + Spring-Boot-style semantic highlighting, ⌘/Ctrl-clickable links
 * Bilingual UI: 中文 / English, switchable at runtime and persisted
 * Zero external dependencies: no database, no Docker; state lives in `.lifecycle/` and `~/.lifecycle/`
@@ -91,7 +91,7 @@ Start / stop / restart, three compile granularities (quick / partial / full), st
 **AI / automation**
 
 * 22 MCP tools over stdio and Streamable HTTP.
-* Per-project `[mcp].expose` whitelist controls what AI can see; `reload_config` is hidden by default.
+* One global whitelist (MCP page, stored in `~/.lifecycle/mcp.json`) controls what AI can see across all managed projects; `reload_config` is hidden by default.
 * One-click generation / writing of client configs for Claude Desktop, Cursor, VS Code, Codex CLI and Gemini CLI (merge-preserving, auto-backup, undoable).
 * A real in-console MCP handshake ("Test connection") lists exactly the tools AI can see right now.
 * AI can create/configure projects and services (start command, compile commands, port) and control service groups via MCP.
@@ -210,15 +210,11 @@ color = true                        # force ANSI output in children (FORCE_COLOR
 
 [process]
 stop_timeout_ms = 5000              # grace after SIGTERM, then SIGKILL the group
-
-[mcp]
-transport = "stdio"                 # stdio | http | both (declarative, see MCP section)
-expose = ["start_project", "stop_project", "compile_*"]   # empty = default whitelist
 ```
 
 Notes:
 
-* An empty `expose` means the **default whitelist** = everything except `reload_config`; `prefix*` wildcards are supported.
+* The MCP whitelist is **global** — manage it on the MCP page. An empty selection falls back to the default policy (everything except `reload_config`); `prefix*` wildcards are supported.
 * `{targets}` in a `partial` command is replaced with the comma-joined target list.
 * After editing, click **Reload config** in the UI (or call `reload_config`) — no process-manager restart needed.
 
@@ -297,7 +293,7 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 
 ### Whitelist
 
-On the **MCP** page, tick tools per project (large checkboxes, grouped by query/process/build/config, group-level select-all with indeterminate state), or apply a preset:
+On the **MCP** page, tick tools (large checkboxes, grouped by query/process/build/config, group-level select-all with indeterminate state), or apply a preset:
 
 | Preset                | Meaning                                              |
 | --------------------- | ---------------------------------------------------- |
@@ -306,7 +302,7 @@ On the **MCP** page, tick tools per project (large checkboxes, grouped by query/
 | Read-only + compile   | Let AI compile and fix errors, never touch processes |
 | Everything            | Includes reload_config — use with care               |
 
-Saving writes the project's `[mcp]` table (**everything else, including comments, is preserved**) and takes effect hot; new MCP sessions route tools by the new whitelist.
+Saving writes LifeCycle's own `~/.lifecycle/mcp.json` — one whitelist for the whole tool, applied to every managed project — and takes effect hot; new MCP sessions route tools by it. Legacy `[mcp]` sections in managed projects' `lifecycle.toml` are parsed but ignored.
 Note: an empty whitelist falls back to the default policy, so the UI refuses to save "nothing selected" — avoiding "looks off, actually on".
 
 ### Client setup
@@ -366,8 +362,8 @@ Default `http://127.0.0.1:39517`.
 | GET/POST   | `/api/groups`                                                                   | List / create groups                                                                                 |           |                        |
 | PUT/DELETE | `/api/groups/{id}`                                                              | Update / delete                                                                                      |           |                        |
 | POST       | \`/api/groups/{id}/start                                                        | stop                                                                                                 | restart\` | Group batch operations |
-| GET        | `/api/mcp`                                                                      | MCP overview: endpoint, stdio command, tool catalog, presets, per-project whitelists, client configs |           |                        |
-| PUT        | `/api/mcp/projects/{project}`                                                   | Write `[mcp]` whitelist, hot-apply                                                                   |           |                        |
+| GET        | `/api/mcp`                                                                      | MCP overview: endpoint, stdio command, tool catalog, presets, global whitelist, client configs        |           |                        |
+| PUT        | `/api/mcp/whitelist`                                                            | Write the global whitelist, hot-apply                                                                 |           |                        |
 | POST       | `/api/mcp/client-config`                                                        | Write/remove client config (merge + backup)                                                          |           |                        |
 | ANY        | `/mcp`                                                                          | MCP Streamable HTTP                                                                                  |           |                        |
 
@@ -421,6 +417,7 @@ Headless multi-project: `lifecycle-http -c a.toml -c b.toml --port 39517` or `--
 | `<project>/.lifecycle/logs/`       | Run / build logs                                                   |
 | `~/.lifecycle/settings.json`       | Global settings (theme, language, notifications, editor, timeouts) |
 | `~/.lifecycle/groups.json`         | Service groups                                                     |
+| `~/.lifecycle/mcp.json`            | Global MCP whitelist + transport preference                        |
 | `~/.lifecycle/projects.json`       | Registered services (survive restarts)                             |
 
 ***

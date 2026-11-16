@@ -126,7 +126,5 @@ pub fn render_toml(
             d.parser.as_deref().unwrap_or("generic")
         ));
     }
-    // 空白名单 = 除 reload_config 外全部工具；"*" 会把 reload_config 也暴露给 AI
-    out.push_str("\n[mcp]\ntransport = \"http\"\nexpose = []\n");
     out
 }

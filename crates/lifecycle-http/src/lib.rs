@@ -173,7 +173,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/reveal-path", post(reveal_path))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/mcp", get(mcp_admin::info))
-        .route("/api/mcp/projects/{project}", put(mcp_admin::put_project))
+        .route("/api/mcp/whitelist", put(mcp_admin::put_policy))
         .route("/api/mcp/client-config", post(mcp_admin::client_config))
         .route("/api/diagnostics", get(get_diagnostics))
         .route("/api/open-editor", post(open_editor))
@@ -397,12 +397,7 @@ async fn add_service(
                 compile_package: body.compile_package.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
             };
             lifecycle_core::config::update_profile(&path, &name, &patch)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "project": project, "profile": name}))
         },
     )
@@ -489,12 +484,7 @@ async fn update_service_profile(
                 compile_package: body.compile_package.map(|c| (c, None)),
             };
             lifecycle_core::config::update_profile(&path, &profile, &patch)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "project": project, "profile": profile}))
         },
     )
@@ -518,12 +508,7 @@ async fn rename_service_handler(
             let engine = state.ws.engine(&project)?;
             let path = engine.lock().await.config_path().to_path_buf();
             lifecycle_core::config::rename_service(&path, &service, &new_name)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "old_service": service, "new_service": new_name}))
         },
     )
@@ -547,12 +532,7 @@ async fn rename_profile_handler(
             let engine = state.ws.engine(&project)?;
             let path = engine.lock().await.config_path().to_path_buf();
             lifecycle_core::config::rename_profile(&path, &profile, &new_name)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "old_profile": profile, "new_profile": new_name}))
         },
     )
@@ -583,12 +563,7 @@ async fn delete_service_profile(
             }
             let path = engine.lock().await.config_path().to_path_buf();
             lifecycle_core::config::delete_profile(&path, &profile)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             Ok(json!({"ok": true, "project": project, "profile": profile}))
         },
     )
@@ -1134,12 +1109,7 @@ async fn save_config(
             let tmp = path.with_extension("toml.tmp");
             std::fs::write(&tmp, &body.content)?;
             std::fs::rename(&tmp, &path)?;
-            let expose = {
-                let mut guard = engine.lock().await;
-                guard.reload_config()?;
-                guard.mcp_expose().to_vec()
-            };
-            state.ws.set_expose(&project, expose);
+            engine.lock().await.reload_config()?;
             state.ws.forget_hub(&project);
             Ok(json!({"ok": true, "path": path}))
         },
@@ -1153,12 +1123,7 @@ async fn reload_config(
 ) -> ApiResult {
     traced(&state, "reload_config", json!({"project": project}), async {
         let engine = state.ws.engine(&project)?;
-        let expose = {
-            let mut guard = engine.lock().await;
-            guard.reload_config()?;
-            guard.mcp_expose().to_vec()
-        };
-        state.ws.set_expose(&project, expose);
+        engine.lock().await.reload_config()?;
         state.ws.forget_hub(&project);
         Ok(json!({"ok": true}))
     })

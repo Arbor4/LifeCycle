@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::Json;
-use lifecycle_core::config::update_mcp_section;
 use lifecycle_core::Error;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -253,30 +252,16 @@ fn configured(client: &Client) -> bool {
 pub async fn info(State(state): State<Arc<AppState>>) -> ApiResult {
     let (exe, base_args, kind) = stdio_command();
     let mut config_args = base_args.clone();
-    let mut projects = Vec::new();
-    for (name, engine) in state.ws.snapshot() {
-        let mut guard = engine.lock().await;
-        let path = guard.config_path().to_path_buf();
-        let transport = guard.mcp_transport().to_string();
-        let expose = guard.mcp_expose().to_vec();
-        let profiles: Vec<String> = guard.list()?.into_iter().map(|s| s.profile).collect();
+    for (_, engine) in state.ws.snapshot() {
+        let path = engine.lock().await.config_path().to_path_buf();
         config_args.push("--config".into());
         config_args.push(absolute(&path));
-        projects.push(json!({
-            "project": name,
-            "config_path": path,
-            "transport": transport,
-            "expose": expose,
-            "effective": lifecycle_mcp::effective_tools(&expose),
-            "is_default": expose.is_empty(),
-            "profiles": profiles,
-        }));
     }
-    projects.sort_by(|a, b| a["project"].as_str().cmp(&b["project"].as_str()));
 
     let url = format!("http://127.0.0.1:{}/mcp", state.port);
     let command = exe.to_string_lossy().into_owned();
     let stdio = stdio_entry(&command, &config_args);
+    let policy = state.ws.mcp_policy();
 
     let client_list: Vec<Value> = clients()
         .iter()
@@ -319,7 +304,13 @@ pub async fn info(State(state): State<Arc<AppState>>) -> ApiResult {
         },
         "tools": lifecycle_mcp::tool_catalog(),
         "presets": presets(),
-        "projects": projects,
+        "policy": {
+            "transport": policy.transport,
+            "expose": policy.expose,
+            "effective": lifecycle_mcp::effective_tools(&policy.expose),
+            "is_default": policy.expose.is_empty(),
+        },
+        "policy_path": state.ws.mcp_policy_path(),
         "clients": client_list,
     })))
 }
@@ -330,11 +321,16 @@ pub struct ExposeBody {
     expose: Vec<String>,
 }
 
-pub async fn put_project(
+pub async fn put_policy(
     State(state): State<Arc<AppState>>,
-    Path(project): Path<String>,
     Json(body): Json<ExposeBody>,
 ) -> ApiResult {
+    if !matches!(body.transport.as_str(), "stdio" | "http" | "both") {
+        return Err(ApiError(Error::Config(format!(
+            "mcp.transport must be stdio, http or both (got '{}')",
+            body.transport
+        ))));
+    }
     for pattern in &body.expose {
         let known = match pattern.strip_suffix('*') {
             Some(prefix) => lifecycle_mcp::ALL_TOOLS
@@ -348,22 +344,17 @@ pub async fn put_project(
             ))));
         }
     }
-    let engine = state.ws.engine(&project)?;
-    let path = engine.lock().await.config_path().to_path_buf();
-    update_mcp_section(&path, &body.transport, &body.expose)?;
-    let (transport, expose) = {
-        let mut guard = engine.lock().await;
-        guard.reload_config()?;
-        (guard.mcp_transport().to_string(), guard.mcp_expose().to_vec())
+    let policy = lifecycle_core::workspace::McpPolicy {
+        transport: body.transport,
+        expose: body.expose,
     };
-    state.ws.set_expose(&project, expose.clone());
+    state.ws.set_mcp_policy(policy.clone())?;
     Ok(Json(json!({
         "ok": true,
-        "project": project,
-        "config_path": path,
-        "transport": transport,
-        "expose": expose,
-        "effective": lifecycle_mcp::effective_tools(&expose),
+        "transport": policy.transport,
+        "expose": policy.expose,
+        "effective": lifecycle_mcp::effective_tools(&policy.expose),
+        "path": state.ws.mcp_policy_path(),
     })))
 }
 

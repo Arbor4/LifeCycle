@@ -22,8 +22,7 @@ export default function McpView() {
   const { t, lang } = useI18n();
   const [info, setInfo] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [sel, setSel] = useState(null);
-  const [transport, setTransport] = useState("stdio");
+  const [transport, setTransport] = useState("both");
   const [picked, setPicked] = useState(new Set());
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState("stdio");
@@ -40,52 +39,39 @@ export default function McpView() {
   const presetDesc = (p) => (lang === "zh" ? p.description : t(`preset.${p.id}.desc`));
   const clientNote = (c) => (lang === "zh" ? c.note : t(`client.${c.id}.note`));
 
-  const applyProject = useCallback((data, name) => {
-    const p = data.projects.find((x) => x.project === name);
-    if (!p) return;
-    setSel(name);
-    setTransport(p.transport);
-    // 空白名单 = 隐式默认，展开成实际生效的勾选，避免"看起来全关其实全开"。
-    setPicked(new Set(p.expose.length ? p.expose : data.tools.filter((x) => x.default_exposed).map((x) => x.name)));
+  const load = useCallback(async () => {
+    try {
+      const data = await api("/api/mcp");
+      setInfo(data);
+      setLoadError(null);
+      setTransport(data.policy.transport);
+      // 空白名单 = 隐式默认，展开成实际生效的勾选，避免"看起来全关其实全开"。
+      setPicked(new Set(data.policy.expose.length ? data.policy.expose : data.tools.filter((x) => x.default_exposed).map((x) => x.name)));
+    } catch (e) {
+      setLoadError(e.message);
+    }
   }, []);
-
-  const load = useCallback(
-    async (keepSel = true) => {
-      try {
-        const data = await api("/api/mcp");
-        setInfo(data);
-        setLoadError(null);
-        const name = keepSel && data.projects.some((p) => p.project === sel) ? sel : data.projects[0]?.project;
-        if (name) applyProject(data, name);
-      } catch (e) {
-        setLoadError(e.message);
-      }
-    },
-    [sel, applyProject]
-  );
 
   useEffect(() => {
-    load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    load();
+  }, [load]);
 
-  const project = useMemo(() => info?.projects.find((p) => p.project === sel) ?? null, [info, sel]);
   const savedPicked = useMemo(
     () =>
       new Set(
-        project
-          ? project.expose.length
-            ? project.expose
+        info
+          ? info.policy.expose.length
+            ? info.policy.expose
             : info.tools.filter((x) => x.default_exposed).map((x) => x.name)
           : []
       ),
-    [project, info]
+    [info]
   );
   const ordered = useMemo(() => (info ? info.tools.filter((x) => picked.has(x.name)).map((x) => x.name) : []), [info, picked]);
   const effective = useMemo(() => ordered.filter((n) => matches(ordered, n)), [ordered]);
   const dirty = useMemo(
-    () => !!project && (transport !== project.transport || !sameSet(picked, savedPicked)),
-    [project, transport, picked, savedPicked]
+    () => !!info && (transport !== info.policy.transport || !sameSet(picked, savedPicked)),
+    [info, transport, picked, savedPicked]
   );
   const grouped = useMemo(() => {
     const out = [];
@@ -96,7 +82,7 @@ export default function McpView() {
     }
     return out;
   }, [info]);
-  const tomlPreview = `[mcp]\ntransport = "${transport}"\nexpose = [${ordered.map((n) => `"${n}"`).join(", ")}]`;
+  const policyPreview = JSON.stringify({ transport, expose: ordered }, null, 2);
   const probeDiff = useMemo(() => {
     if (!probe) return null;
     const seen = new Set(probe.tools.map((x) => x.name));
@@ -126,6 +112,11 @@ export default function McpView() {
     setPicked(new Set(p.expose));
     pushToast(t("已套用预设「{name}」，记得保存", { name: presetName(p) }), { kind: "info" });
   }
+  function resetPolicy() {
+    if (!info) return;
+    setTransport(info.policy.transport);
+    setPicked(new Set(savedPicked));
+  }
 
   const runProbe = useCallback(async () => {
     if (!info) return;
@@ -142,14 +133,14 @@ export default function McpView() {
   }, [info]);
 
   async function save() {
-    if (!project || picked.size === 0) return;
+    if (!info || picked.size === 0) return;
     setSaving(true);
     try {
-      const r = await api(`/api/mcp/projects/${encodeURIComponent(sel)}`, {
+      const r = await api("/api/mcp/whitelist", {
         method: "PUT",
         body: JSON.stringify({ transport, expose: ordered }),
       });
-      pushToast(t("已写入 {path} · {n} 个工具对 AI 可见", { path: r.config_path, n: r.effective.length }), { kind: "success" });
+      pushToast(t("已保存 · {n} 个工具对 AI 可见", { n: r.effective.length }), { kind: "success" });
       await load();
       if (probe) runProbe();
     } catch (e) {
@@ -254,23 +245,7 @@ export default function McpView() {
             <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
               <div className="space-y-2 sm:space-y-4">
                 <div className="panel p-3 sm:p-4">
-                  <div className="field-label">{t("项目")}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {info.projects.map((p) => (
-                      <button
-                        key={p.project}
-                        className="chip"
-                        data-active={sel === p.project}
-                        onClick={() => applyProject(info, p.project)}
-                      >
-                        <Icon name="server" size={12} />
-                        <span className="mono">{p.project}</span>
-                        <span className="text-[var(--dim)]">{t("{n} 工具", { n: p.effective.length })}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap items-start gap-4">
+                  <div className="flex flex-wrap items-start gap-4">
                     <div>
                       <div className="field-label">{t("传输方式")}</div>
                       <Segmented
@@ -295,12 +270,10 @@ export default function McpView() {
                     </div>
                   </div>
 
-                  {project && (
-                    <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-[var(--dim)]">
-                      <Icon name="info" size={12} className="mt-0.5 flex-none" />
-                      <span>{t("写入 {path} 的 [mcp] 段，其余配置与注释保持不变；新的 MCP 会话立即生效。", { path: project.config_path })}</span>
-                    </p>
-                  )}
+                  <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-[var(--dim)]">
+                    <Icon name="info" size={12} className="mt-0.5 flex-none" />
+                    <span>{t("全局唯一白名单：保存到 {path}，对所有项目生效；新的 MCP 会话立即生效。", { path: info.policy_path })}</span>
+                  </p>
                 </div>
 
                 <div className="panel">
@@ -376,7 +349,7 @@ export default function McpView() {
 
                   <div className="border-t border-[var(--line)] p-3 sm:p-4">
                     <div className="field-label">{t("将写入的配置")}</div>
-                    <pre className="well mono whitespace-pre-wrap break-all p-3 text-xs leading-5 text-[var(--mut)]">{tomlPreview}</pre>
+                    <pre className="well mono whitespace-pre-wrap break-all p-3 text-xs leading-5 text-[var(--mut)]">{policyPreview}</pre>
                   </div>
                 </div>
               </div>
@@ -592,14 +565,14 @@ export default function McpView() {
             <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] bg-[var(--bg2)] px-2 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
               <span className="dot dot-starting" />
               <span className="text-sm">{t("白名单有未保存的更改")}</span>
-              <span className="mono text-xs text-[var(--mut)]">{t("{sel} · {n} 工具", { sel, n: effective.length })}</span>
+              <span className="mono text-xs text-[var(--mut)]">{t("{n} 工具", { n: effective.length })}</span>
               <span className="flex-1" />
-              <button className="btn btn-sm" onClick={() => applyProject(info, sel)}>
+              <button className="btn btn-sm" onClick={resetPolicy}>
                 {t("放弃")}
               </button>
               <button className="btn btn-sm btn-primary" disabled={saving || picked.size === 0} onClick={save}>
                 {saving ? <span className="spinner" /> : <Icon name="save" size={12} />}
-                {t("保存到 lifecycle.toml")}
+                {t("保存白名单")}
               </button>
             </div>
           )}
