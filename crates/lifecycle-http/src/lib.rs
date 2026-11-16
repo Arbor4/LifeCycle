@@ -231,6 +231,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/projects/{project}/profiles/{profile}/logs/clear",
             post(clear_logs),
         )
+        .route("/api/ports/release", post(release_port))
         .nest_service("/mcp", mcp_service)
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -1464,6 +1465,24 @@ async fn restart_group(
         Ok(json!({"results": results}))
     })
     .await
+}
+
+#[derive(Deserialize)]
+struct ReleasePortReq {
+    port: u16,
+}
+
+async fn release_port(
+    State(_state): State<Arc<AppState>>,
+    Json(body): Json<ReleasePortReq>,
+) -> ApiResult {
+    let killed = lifecycle_core::process::kill_port(body.port)
+        .map_err(|e| Error::Other(format!("释放端口 {} 失败: {}", body.port, e)))?;
+    Ok(Json(json!({
+        "success": true,
+        "port": body.port,
+        "killed_processes": killed,
+    })))
 }
 
 pub async fn serve(ws: Arc<Workspace>, port: u16) -> anyhow::Result<()> {

@@ -64,9 +64,42 @@ pub fn detect(root: &Path) -> Detected {
         };
     }
     if root.join("Cargo.toml").is_file() {
+        let mut start_cmd = "cargo run".to_string();
+        if let Ok(content) = std::fs::read_to_string(root.join("Cargo.toml")) {
+            if let Ok(toml_val) = content.parse::<toml::Value>() {
+                if let Some(pkg) = toml_val.get("package") {
+                    if let Some(def_run) = pkg.get("default-run").and_then(|v| v.as_str()) {
+                        start_cmd = format!("cargo run --bin {def_run}");
+                    } else if let Some(name) = pkg.get("name").and_then(|v| v.as_str()) {
+                        start_cmd = format!("cargo run --bin {name}");
+                    }
+                } else if let Some(ws) = toml_val.get("workspace") {
+                    // Workspace: inspect members to find the most likely main runnable app
+                    if let Some(members) = ws.get("members").and_then(|v| v.as_array()) {
+                        for m in members {
+                            if let Some(path_str) = m.as_str() {
+                                let sub_cargo = root.join(path_str).join("Cargo.toml");
+                                if let Ok(sub_txt) = std::fs::read_to_string(&sub_cargo) {
+                                    if let Ok(sub_toml) = sub_txt.parse::<toml::Value>() {
+                                        if let Some(sub_pkg) = sub_toml.get("package") {
+                                            let sub_name = sub_pkg.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                            if sub_name.contains("app") || sub_name.contains("server") || sub_name.contains("ui") {
+                                                let bin_name = sub_pkg.get("default-run").and_then(|v| v.as_str()).unwrap_or(sub_name);
+                                                start_cmd = format!("cargo run -p {sub_name} --bin {bin_name}");
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return Detected {
             kind: "rust".into(),
-            start_command: "cargo run".into(),
+            start_command: start_cmd,
             ready_pattern: None,
             ready_port: None,
             compile_quick: Some("cargo build".into()),

@@ -237,6 +237,58 @@ pub fn kill_group(pid: u32) {
         .output();
 }
 
+/// Find and terminate any external process listening on the given TCP port.
+/// Returns the number of processes killed.
+pub fn kill_port(port: u16) -> std::io::Result<usize> {
+    if port == 0 {
+        return Ok(0);
+    }
+    #[cfg(unix)]
+    {
+        let out = std::process::Command::new("lsof")
+            .args(["-ti", &format!(":{port}")])
+            .output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let mut count = 0;
+        let my_pid = std::process::id();
+        for line in stdout.lines() {
+            if let Ok(pid) = line.trim().parse::<u32>() {
+                if pid == my_pid {
+                    continue; // Do not kill self
+                }
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                }
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+    #[cfg(not(unix))]
+    {
+        let out = std::process::Command::new("cmd")
+            .args(["/C", &format!("netstat -ano | findstr :{port}")])
+            .output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let mut count = 0;
+        let my_pid = std::process::id();
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(last) = parts.last() {
+                if let Ok(pid) = last.parse::<u32>() {
+                    if pid != 0 && pid != my_pid {
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/PID", &pid.to_string(), "/F"])
+                            .output();
+                        count += 1;
+                    }
+                }
+            }
+        }
+        Ok(count)
+    }
+}
+
 /// 命令行是否属于 LifeCycle 的 stdio MCP server 入口之一。
 /// `exe` 为可执行文件基名（可带 .exe），`args` 为完整命令行。
 pub fn is_stdio_mcp(exe: &str, args: &str) -> bool {
