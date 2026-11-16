@@ -33,7 +33,7 @@ Start / stop / restart, three compile granularities (quick / partial / full), st
 
 * Desktop: Tauri 2 + React 19 + Tailwind CSS v4 + lucide-react (light / dark / system themes)
 * Backend: Rust workspace (core / cli / mcp / http / app)
-* AI: MCP over stdio + Streamable HTTP, 21 tools, per-project expose whitelist
+* AI: MCP over stdio + Streamable HTTP, 22 tools, per-project expose whitelist
 * Logs: ANSI terminal colors + Spring-Boot-style semantic highlighting, ⌘/Ctrl-clickable links
 * Bilingual UI: 中文 / English, switchable at runtime and persisted
 * Zero external dependencies: no database, no Docker; state lives in `.lifecycle/` and `~/.lifecycle/`
@@ -90,7 +90,7 @@ Start / stop / restart, three compile granularities (quick / partial / full), st
 
 **AI / automation**
 
-* 21 MCP tools over stdio and Streamable HTTP.
+* 22 MCP tools over stdio and Streamable HTTP.
 * Per-project `[mcp].expose` whitelist controls what AI can see; `reload_config` is hidden by default.
 * One-click generation / writing of client configs for Claude Desktop, Cursor, VS Code, Codex CLI and Gemini CLI (merge-preserving, auto-backup, undoable).
 * A real in-console MCP handshake ("Test connection") lists exactly the tools AI can see right now.
@@ -136,7 +136,7 @@ Chinese UI screenshots live in [`docs/screenshots/zh/`](docs/screenshots/zh/) an
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `lifecycle-core` | The single state holder: config parsing, process groups, log ring buffer + files, compile & parsers, groups, registry |
 | `lifecycle-cli`  | Headless CLI: `list/start/stop/restart/status/compile/logs`; `--mcp` switches to stdio                                |
-| `lifecycle-mcp`  | rmcp server: 21 tools, expose whitelist, call traces (stderr), stdio + Streamable HTTP                                |
+| `lifecycle-mcp`  | rmcp server: 22 tools, expose whitelist, call traces (stderr), stdio + Streamable HTTP                                |
 | `lifecycle-http` | axum: REST + SSE + `/healthz` + `/mcp`; group orchestration; MCP admin API                                            |
 | `lifecycle-app`  | Tauri shell: tray, notifications, orphan cleanup; `--mcp-stdio` reuses the binary as an MCP entrypoint                |
 | `ui/`            | React 19 + Vite + Tailwind v4 + lucide-react                                                                          |
@@ -275,7 +275,7 @@ Filters, sorting, search and partial-compile targets are remembered locally.
 * **stdio**: the client spawns a local process. Prefers a sibling `lifecycle-mcp` binary; the packaged desktop app itself supports `--mcp-stdio`, so no extra binary is needed.
 * **Streamable HTTP**: `http://127.0.0.1:39517/mcp` (loopback only), reusing the running backend.
 
-### Tools (20)
+### Tools (22)
 
 | Tool                                                             | Purpose                                                                                                                         | Risk                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |

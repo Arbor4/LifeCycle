@@ -32,7 +32,7 @@
 
 - 桌面端：Tauri 2 + React 19 + Tailwind CSS v4 + lucide-react（亮 / 暗 / 跟随系统三套主题）
 - 后端：Rust workspace（core / cli / mcp / http / app）
-- AI 接入：MCP stdio + Streamable HTTP，12 个工具，按项目配置暴露白名单
+- AI 接入：MCP stdio + Streamable HTTP，22 个工具，按项目配置暴露白名单
 - 日志：ANSI 终端色 + Spring Boot 风格语义高亮，链接 ⌘/Ctrl+点击直达
 - 无外部依赖：不需要数据库、不需要 Docker，状态落在项目内 `.lifecycle/` 与 `~/.lifecycle/`
 
@@ -84,7 +84,7 @@
 -  中文 / English 双语界面：侧栏 LANGUAGE 一键切换，随设置持久化。
 
 **AI / 自动化**
--  MCP 12 工具，stdio 与 Streamable HTTP 双传输。
+-  MCP 22 工具，stdio 与 Streamable HTTP 双传输。
 -  按项目 `[mcp].expose` 白名单控制 AI 可见工具；`reload_config` 默认不暴露。
 -  一键生成 / 写入 Claude Desktop、Cursor、VS Code、Codex CLI、Gemini CLI 的接入配置（保留原有内容、自动备份、可撤销）。
 -  控制台内真实 MCP 握手"测试连接"，直接列出 AI 此刻能看到的工具。
@@ -128,7 +128,7 @@
 | --- | --- |
 | `lifecycle-core` | 唯一状态持有者：配置解析、进程组、日志环形缓冲 + 落盘、编译与解析器、分组、注册表 |
 | `lifecycle-cli` |  headless CLI：`list/start/stop/restart/status/compile/logs`，`--mcp` 切 stdio |
-| `lifecycle-mcp` | rmcp Server：12 工具、expose 白名单、调用 Trace（stderr）、stdio + Streamable HTTP |
+| `lifecycle-mcp` | rmcp Server：22 工具、expose 白名单、调用 Trace（stderr）、stdio + Streamable HTTP |
 | `lifecycle-http` | axum：REST + SSE + `/healthz` + `/mcp`；分组编排；MCP 配置管理 API |
 | `lifecycle-app` | Tauri 桌面壳：托盘、系统通知、孤儿清理、`--mcp-stdio` 复用为 MCP 入口 |
 | `ui/` | React 19 + Vite + Tailwind v4 + lucide-react |
@@ -266,7 +266,7 @@ expose = ["start_project", "stop_project", "compile_*"]   # 空 = 默认白名�
 - **stdio**：客户端拉起本地进程。可执行文件优先用同目录的 `lifecycle-mcp`；打包后的桌面 App 自身支持 `--mcp-stdio`，无需额外二进制。
 - **Streamable HTTP**：`http://127.0.0.1:39517/mcp`（仅监听回环），复用常驻后端。
 
-### 工具（20）
+### 工具（22）
 
 | 工具 | 作用 | 风险 |
 | --- | --- | --- |
