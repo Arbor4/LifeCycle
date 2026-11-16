@@ -98,12 +98,12 @@ export default function GroupsView({ projects, onOpen }) {
 
   return (
     <div className="view flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-1.5 sm:gap-3 sm:px-4 sm:py-3">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="group" size={16} className="text-[var(--vio)]" />
           {t("服务分组")}
         </h1>
-        <span className="text-xs text-[var(--mut)]">
+        <span className="hidden text-xs text-[var(--mut)] md:inline">
           {t("微服务一键启停 · {n} 个分组 · {r} 个成员运行中", { n: groups.length, r: totalRunning })}
         </span>
         <span className="flex-1" />
@@ -119,13 +119,13 @@ export default function GroupsView({ projects, onOpen }) {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-4">
+        <div className="grid grid-cols-1 gap-2 sm:gap-4 xl:grid-cols-2">
           {groups.map((g) => {
             const run = runningCount(g);
             const all = run === g.members.length && g.members.length > 0;
             return (
-              <div key={g.id} className="panel flex flex-col p-4">
+              <div key={g.id} className="panel flex flex-col p-3 sm:p-4">
                 <div className="flex items-center gap-2">
                   <span
                     className="h-2.5 w-2.5 flex-none rounded-full"

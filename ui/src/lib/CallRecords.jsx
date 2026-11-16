@@ -76,7 +76,7 @@ export default function CallRecords() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 border-b border-[var(--line)] bg-[var(--bg1)] p-2 sm:p-3 lg:grid-cols-4">
         {tiles.map((tl) => (
           <div key={tl.label} className="panel flex items-center gap-3 px-3 py-2">
             <span
@@ -93,7 +93,7 @@ export default function CallRecords() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-2 py-2 sm:px-4 sm:py-2.5">
         <Icon name="filter" size={13} className="text-[var(--dim)]" />
         <Segmented
           value={source}
@@ -116,7 +116,7 @@ export default function CallRecords() {
         <span className="mono text-xs text-[var(--dim)]">{t("{a}/{b} 条", { a: filtered.length, b: records.length })}</span>
         <span className="flex-1" />
         {updatedAt && (
-          <span className="mono text-[11px] text-[var(--dim)]">
+          <span className="mono hidden text-[11px] text-[var(--dim)] sm:inline">
             {t("更新于 {time}", { time: new Date(updatedAt).toLocaleTimeString() })}
           </span>
         )}
@@ -134,26 +134,26 @@ export default function CallRecords() {
         <table className="table">
           <thead>
             <tr>
-              <th className="w-28">{t("时间")}</th>
-              <th className="w-20">{t("来源")}</th>
+              <th className="w-20 sm:w-28">{t("时间")}</th>
+              <th className="hidden w-20 sm:table-cell">{t("来源")}</th>
               <th>{t("工具")}</th>
-              <th className="w-[30%]">{t("耗时")}</th>
-              <th className="w-20">{t("结果")}</th>
-              <th className="w-10"></th>
+              <th className="hidden w-[30%] sm:table-cell">{t("耗时")}</th>
+              <th className="w-14 sm:w-20">{t("结果")}</th>
+              <th className="w-8 sm:w-10"></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((r, i) => (
               <tr key={r.id ?? `${r.ts}-${i}`} className="cursor-pointer" onClick={() => setSelected(r)}>
                 <td className="mono text-xs text-[var(--mut)]">{new Date(r.ts).toLocaleTimeString()}</td>
-                <td>
+                <td className="hidden sm:table-cell">
                   <span className={`badge ${r.source === "mcp" ? "badge-build" : "badge-read"}`}>
                     <Icon name={r.source === "mcp" ? "plug" : "monitor"} size={10} />
                     {r.source === "mcp" ? "MCP" : t("界面")}
                   </span>
                 </td>
-                <td className="mono text-xs">{r.tool}</td>
-                <td>
+                <td className="mono truncate text-xs">{r.tool}</td>
+                <td className="hidden sm:table-cell">
                   <div className="flex items-center gap-2">
                     <span className="mono w-16 flex-none text-xs text-[var(--mut)]">{r.duration_ms}ms</span>
                     <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--bg3)]">

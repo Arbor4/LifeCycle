@@ -15,7 +15,6 @@ import GroupsView from "./lib/GroupsView.jsx";
 import McpView from "./lib/McpView.jsx";
 import ToastHost from "./lib/ToastHost.jsx";
 import RegisterModal from "./lib/RegisterModal.jsx";
-import Logo from "./lib/Logo.jsx";
 import { useMediaQuery } from "./lib/useMediaQuery.js";
 import ProjectManageModal from "./lib/ProjectManageModal.jsx";
 import Icon from "./lib/Icon.jsx";
@@ -299,17 +298,15 @@ export default function App() {
 
       <main className="flex min-w-0 flex-1 flex-col">
         {isMobile && (
-          <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-3 py-1.5">
+          <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-1">
             <button
               type="button"
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-[var(--mut)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
               onClick={() => setMobileNav(true)}
               title={t("打开导航")}
             >
               <Icon name="menu" size={16} />
             </button>
-            <Logo size={22} />
-            <span className="text-sm font-semibold tracking-tight">LifeCycle</span>
             <span
               className={`dot ml-auto flex-none ${online ? "dot-running" : "dot-crashed"}`}
               title={online ? t("后端服务在线（端口 39517）") : t("后端服务离线")}

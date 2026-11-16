@@ -644,6 +644,12 @@ input[type="checkbox"]:not(.cb-input) {
     padding: 5px 8px;
   }
 }
+/* 最窄窗口固定布局：列宽由 th 声明，名称列吃掉剩余宽度并截断，杜绝横向滚动 */
+@media (max-width: 639px) {
+  .table {
+    table-layout: fixed;
+  }
+}
 .table th {
   position: sticky;
   top: 0;

@@ -525,8 +525,16 @@ function subscribe(l) {
   return () => listeners.delete(l);
 }
 
+// 点号 key 的中文文案（中文为源语言，这类 key 本身不是中文）
+const ZH = {
+  "risk.read": "只读",
+  "risk.control": "进程",
+  "risk.build": "编译",
+  "risk.danger": "危险",
+};
+
 function translate(l, key, vars) {
-  let s = l === "en" ? (EN[key] ?? key) : key;
+  let s = l === "en" ? (EN[key] ?? key) : (ZH[key] ?? key);
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }

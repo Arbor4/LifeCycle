@@ -12,6 +12,7 @@ import RegisterModal from "./RegisterModal.jsx";
 
 const VIEW_KEY = "lifecycle-services-view";
 const STATE_ORDER = { running: 0, starting: 1, stopping: 2, crashed: 3, idle: 4 };
+const ENV_TONE = { dev: "blu", test: "amb", staging: "vio", prod: "grn" };
 
 function loadView() {
   try {
@@ -515,7 +516,7 @@ export default function ServicesView({
       </div>
 
       {projects.length > 1 && (
-        <div className="flex items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1 overflow-x-auto text-xs sm:px-4 sm:py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1 text-xs sm:px-4 sm:py-1.5">
           <span className="mr-1 hidden flex-none text-[11px] font-semibold text-[var(--dim)] sm:inline">{t("项目切换:")}</span>
           <button
             type="button"
@@ -553,10 +554,10 @@ export default function ServicesView({
       )}
 
       {currentProj && (
-        <div className="flex flex-wrap items-center justify-between border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-2 text-xs">
+        <div className="flex flex-wrap items-center justify-between border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-2 text-xs sm:px-4">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-[var(--dim)] flex-none">{t("项目路径:")}</span>
-            <span className="mono text-[var(--txt)] truncate select-all">{currentProjDir}</span>
+            <span className="mono text-[var(--txt)] min-w-0 flex-1 truncate select-all">{currentProjDir}</span>
             <button
               type="button"
               className="text-[var(--dim)] hover:text-[var(--txt)] p-1 rounded hover:bg-[var(--bg2)] flex-none"
@@ -618,7 +619,7 @@ export default function ServicesView({
               {thSort("uptime", t("运行时长"), "hidden md:table-cell")}
               {thSort("port", t("端口"), "hidden sm:table-cell")}
               {thSort("build", t("最近编译"), "hidden xl:table-cell")}
-              <th className="text-right sticky right-0 z-20 bg-[var(--bg1)] shadow-[-6px_0_12px_rgba(0,0,0,0.12)]">
+              <th className="text-right sticky right-0 z-20 bg-[var(--bg1)] shadow-[-6px_0_12px_rgba(0,0,0,0.12)] max-sm:w-[148px]">
                 {t("操作")}
               </th>
             </tr>
@@ -637,13 +638,17 @@ export default function ServicesView({
                     <Checkbox size="sm" checked={selected.has(r.key)} onChange={() => toggle(r.key)} title={t("选择 {key}", { key: r.key })} />
                   </td>
                   <td>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-sm text-[var(--txt)]">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className={`dot dot-${r.state} flex-none sm:hidden`}
+                        title={t("当前状态: {state}", { state: t(STATE_LABEL[r.state] ?? r.state) })}
+                      />
+                      <span className="truncate font-semibold text-sm text-[var(--txt)]">
                         {r.service || r.profile}
                       </span>
                       <button
                         type="button"
-                        className="text-[var(--dim)] hover:text-[var(--blu)] p-0.5 rounded transition-colors"
+                        className="flex-none text-[var(--dim)] hover:text-[var(--blu)] p-0.5 rounded transition-colors"
                         title={t("修改服务名称")}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -656,8 +661,18 @@ export default function ServicesView({
                       >
                         <Icon name="edit" size={11} />
                       </button>
-                      <span className="text-[11px] mono text-[var(--dim)]">({r.project})</span>
+                      <span className="hidden flex-none text-[11px] mono text-[var(--dim)] sm:inline">({r.project})</span>
+                      <span
+                        className="flex-none rounded px-1 py-px text-[10px] font-medium sm:hidden"
+                        style={{
+                          color: `var(--${ENV_TONE[r.env_name] ?? "mut"})`,
+                          background: `color-mix(in oklab, var(--${ENV_TONE[r.env_name] ?? "mut"}) 14%, transparent)`,
+                        }}
+                      >
+                        {r.env_name || r.profile}
+                      </span>
                     </div>
+                    <div className="mono truncate text-[11px] text-[var(--dim)] sm:hidden">{r.project}</div>
                   </td>
                   <td className="hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
@@ -733,17 +748,8 @@ export default function ServicesView({
                     className="sticky right-0 z-10 bg-[var(--bg1)] group-hover:bg-[var(--bg2)] transition-colors shadow-[-6px_0_12px_rgba(0,0,0,0.12)]"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex justify-end items-center gap-1.5 py-0.5 pr-1">
-                      <span
-                        className={`inline-flex sm:hidden items-center gap-1 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--bg2)] px-1.5 py-0.5 text-[10px] font-medium ${
-                          r.state === "crashed" ? "text-[var(--red)]" : r.state === "running" ? "text-[var(--grn)]" : r.state === "starting" || r.state === "stopping" ? "text-[var(--amb)]" : "text-[var(--mut)]"
-                        }`}
-                        title={t("当前状态: {state}", { state: t(STATE_LABEL[r.state] ?? r.state) })}
-                      >
-                        <span className={`dot dot-${r.state}`} />
-                        {t(STATE_LABEL[r.state] ?? r.state)}
-                      </span>
-                      {busy[r.key] && <span className="spinner self-center text-[var(--blu)]" />}
+                    <div className="flex justify-end items-center gap-1 py-0.5 pr-1 sm:gap-1.5">
+                      {busy[r.key] && <span className="spinner hidden self-center text-[var(--blu)] sm:inline" />}
 
                       <div className="flex items-center gap-0.5 rounded border border-[var(--line)] bg-[var(--bg2)]/60 p-0.5">
                         <button
@@ -753,7 +759,7 @@ export default function ServicesView({
                           onClick={() => start(r)}
                         >
                           <Icon name="play" size={11} />
-                          {t("启动")}
+                          <span className="hidden sm:inline">{t("启动")}</span>
                         </button>
                         <button
                           className="btn btn-sm btn-danger !py-1 !px-2"
@@ -762,7 +768,7 @@ export default function ServicesView({
                           onClick={() => stop(r)}
                         >
                           <Icon name="stop" size={11} />
-                          {t("停止")}
+                          <span className="hidden sm:inline">{t("停止")}</span>
                         </button>
                         <button
                           className="btn btn-sm btn-warn !py-1 !px-1.5 hidden sm:inline-flex"
@@ -807,7 +813,8 @@ export default function ServicesView({
                         title={confirming === r.key ? t("再次点击确认卸载") : t("卸载服务（停止并移除注册）")}
                         onClick={() => unregister(r)}
                       >
-                        {confirming === r.key ? <span className="text-xs">{t("确认?")}</span> : <Icon name="trash" size={12} />}
+                        <Icon name="trash" size={12} className={confirming === r.key ? "animate-pulse" : ""} />
+                        {confirming === r.key && <span className="hidden text-xs sm:inline">{t("确认?")}</span>}
                       </button>
                     </div>
                   </td>

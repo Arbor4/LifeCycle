@@ -197,18 +197,18 @@ export default function McpView() {
 
   return (
     <div className="view flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-1.5 sm:gap-3 sm:px-4 sm:py-3">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="plug" size={16} className="text-[var(--cyn)]" />
           {t("MCP 配置")}
         </h1>
-        <span className="text-xs text-[var(--mut)]">{t("决定 AI 客户端能看到、能调用哪些工具")}</span>
+        <span className="hidden text-xs text-[var(--mut)] md:inline">{t("决定 AI 客户端能看到、能调用哪些工具")}</span>
         <span className="flex-1" />
         {info && (
           <>
-            <button className="chip mono" title={t("点击复制 MCP 端点")} onClick={() => copy(info.endpoint, "endpoint")}>
-              <Icon name={copied === "endpoint" ? "check" : "link"} size={12} />
-              {info.endpoint}
+            <button className="chip mono max-w-full" title={t("点击复制 MCP 端点")} onClick={() => copy(info.endpoint, "endpoint")}>
+              <Icon name={copied === "endpoint" ? "check" : "link"} size={12} className="flex-none" />
+              <span className="truncate">{info.endpoint}</span>
             </button>
             <button className="btn btn-sm" disabled={probing} onClick={runProbe}>
               {probing ? <span className="spinner" /> : <Icon name="zap" size={12} />}
@@ -218,7 +218,7 @@ export default function McpView() {
         )}
       </div>
 
-      <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-4">
+      <div className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--bg1)] px-2 sm:px-4">
         {[
           ["config", t("工具白名单"), "shield"],
           ["calls", t("调用记录"), "diag"],
@@ -237,7 +237,7 @@ export default function McpView() {
           </button>
         ))}
         <span className="flex-1" />
-        <span className="text-[11px] text-[var(--dim)]">{t("UI 与 MCP 的每次工具调用，含请求与响应")}</span>
+        <span className="hidden text-[11px] text-[var(--dim)] lg:inline">{t("UI 与 MCP 的每次工具调用，含请求与响应")}</span>
       </div>
 
       {loadError && (
@@ -250,10 +250,10 @@ export default function McpView() {
         <CallRecords />
       ) : info ? (
         <>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-              <div className="space-y-4">
-                <div className="panel p-4">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-4">
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+              <div className="space-y-2 sm:space-y-4">
+                <div className="panel p-3 sm:p-4">
                   <div className="field-label">{t("项目")}</div>
                   <div className="flex flex-wrap gap-1.5">
                     {info.projects.map((p) => (
@@ -283,7 +283,7 @@ export default function McpView() {
                         ]}
                       />
                     </div>
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-[160px] flex-1">
                       <div className="field-label">{t("快速预设")}</div>
                       <div className="flex flex-wrap gap-1.5">
                         {info.presets.map((p) => (
@@ -304,7 +304,7 @@ export default function McpView() {
                 </div>
 
                 <div className="panel">
-                  <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-3 py-2 sm:px-4 sm:py-3">
                     <Icon name="shield" size={15} className="text-[var(--grn)]" />
                     <h2 className="text-sm font-semibold">{t("工具白名单")}</h2>
                     <span className="mono text-xs text-[var(--mut)]">
@@ -374,16 +374,16 @@ export default function McpView() {
                     })}
                   </div>
 
-                  <div className="border-t border-[var(--line)] p-4">
+                  <div className="border-t border-[var(--line)] p-3 sm:p-4">
                     <div className="field-label">{t("将写入的配置")}</div>
-                    <pre className="well mono overflow-x-auto p-3 text-xs leading-5 text-[var(--mut)]">{tomlPreview}</pre>
+                    <pre className="well mono whitespace-pre-wrap break-all p-3 text-xs leading-5 text-[var(--mut)]">{tomlPreview}</pre>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-2 sm:space-y-4">
                 {(probe || probeError) && (
-                  <div className="panel p-4">
+                  <div className="panel p-3 sm:p-4">
                     {probe ? (
                       <>
                         <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export default function McpView() {
                   </div>
                 )}
 
-                <div className="panel p-4">
+                <div className="panel p-3 sm:p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Icon name="terminal" size={15} className="text-[var(--blu)]" />
                     <h2 className="text-sm font-semibold">{t("接入方式")}</h2>
@@ -494,7 +494,7 @@ export default function McpView() {
                 </div>
 
                 <div className="panel">
-                  <div className="flex items-center gap-2 border-b border-[var(--line)] px-4 py-3">
+                  <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2 sm:px-4 sm:py-3">
                     <Icon name="grid" size={15} className="text-[var(--cyn)]" />
                     <h2 className="text-sm font-semibold">{t("客户端接入")}</h2>
                     <span className="text-xs text-[var(--dim)]">
@@ -589,7 +589,7 @@ export default function McpView() {
           </div>
 
           {dirty && (
-            <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] bg-[var(--bg2)] px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] bg-[var(--bg2)] px-2 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
               <span className="dot dot-starting" />
               <span className="text-sm">{t("白名单有未保存的更改")}</span>
               <span className="mono text-xs text-[var(--mut)]">{t("{sel} · {n} 工具", { sel, n: effective.length })}</span>

@@ -19,7 +19,7 @@ const DEFAULTS = {
 
 function Section({ icon, title, desc, children, tone = "blu" }) {
   return (
-    <div className="panel p-4">
+    <div className="panel p-3 sm:p-4">
       <div className="flex items-start gap-3">
         <span
           className="flex h-8 w-8 flex-none items-center justify-center rounded-lg"
@@ -88,19 +88,19 @@ export default function SettingsPanel() {
 
   return (
     <div className="view flex h-full min-h-0 flex-col bg-[var(--bg0)]">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--bg1)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--line)] bg-[var(--bg1)] px-2 py-1.5 sm:gap-3 sm:px-4 sm:py-3">
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Icon name="settings" size={16} className="text-[var(--amb)]" />
           {t("全局设置")}
         </h1>
-        <span className="text-xs text-[var(--mut)]">{t("作用于整个 LifeCycle，与具体服务无关")}</span>
+        <span className="hidden text-xs text-[var(--mut)] md:inline">{t("作用于整个 LifeCycle，与具体服务无关")}</span>
         <span className="flex-1" />
         <span className="chip mono cursor-default" title="settings.json">
           <Icon name="config" size={12} />
           ~/.lifecycle/settings.json
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-4">
         <div className="mx-auto max-w-2xl space-y-3">
           <Section icon="sun" title={t("外观")} desc={t("主题立即生效，并持久化到 ~/.lifecycle/settings.json。")} tone="amb">
             <div className="flex flex-wrap items-center gap-3">
@@ -199,7 +199,7 @@ export default function SettingsPanel() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-[var(--line)] bg-[var(--bg1)] px-4 py-2.5">
+      <div className="flex items-center gap-2 border-t border-[var(--line)] bg-[var(--bg1)] px-2 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
         {dirty ? (
           <>
             <span className="dot dot-starting" />
