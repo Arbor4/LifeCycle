@@ -150,7 +150,6 @@ export default function Sidebar({
                     ? { background: `color-mix(in oklab, var(--${n.tone}) 14%, transparent)`, color: `var(--${n.tone})`, fontWeight: 600 }
                     : { color: "var(--mut)" }
               }
-              title={t(n.label)}
               onClick={() => {
                 if (n.id === "services" && onSelectProject) onSelectProject(null);
                 onNavigate(n.id);
@@ -229,9 +228,9 @@ export default function Sidebar({
                 <div key={p.project} className="rounded-lg">
                   {/* 项目文件夹栏：点击选择项目，展示该项目服务列表 */}
                   <div
-                    className={`group flex items-center justify-between rounded-md px-2 py-1.5 cursor-pointer transition-colors ${
+                    className={`group relative flex items-center justify-between rounded-lg px-2.5 py-1.5 cursor-pointer transition-all ${
                       isProjectActive
-                        ? "bg-[var(--blu-soft)] text-[var(--blu)] font-medium"
+                        ? "bg-[var(--blu-soft)] text-[var(--blu)] font-medium shadow-xs"
                         : "text-[var(--txt)] hover:bg-[var(--bg2)]"
                     }`}
                     onClick={() => handleProjectClick(p.project)}
@@ -240,90 +239,107 @@ export default function Sidebar({
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Icon
                         name="folder"
-                        size={14}
-                        className={isProjectActive ? "text-[var(--blu)]" : "text-[var(--amb)]"}
+                        size={15}
+                        className={isProjectActive ? "text-[var(--blu)]" : "text-[var(--dim)] group-hover:text-[var(--txt)] transition-colors"}
                       />
-                      <span className="truncate text-xs font-semibold">{p.project}</span>
+                      <span className="truncate text-xs font-semibold tracking-tight">{p.project}</span>
                     </div>
-                    <div className="flex items-center gap-1 ml-2">
+
+                    <div className="flex items-center gap-1.5 ml-2">
+                      {/* 悬停时出现的快捷动作区（平时隐藏，消除视觉拥塞，彻底对标图 1 的极简美学） */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          className="p-1 text-[var(--dim)] hover:text-[var(--blu)] hover:bg-[var(--bg3)] rounded transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onAddServiceToProject) onAddServiceToProject(p.project);
+                          }}
+                          title={t("为项目「{name}」添加服务/环境", { name: p.project })}
+                        >
+                          <Icon name="plus" size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 text-[var(--dim)] hover:text-[var(--txt)] hover:bg-[var(--bg3)] rounded transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onManageProject) onManageProject(p.project);
+                          }}
+                          title={t("项目信息、路径与管理")}
+                        >
+                          <Icon name="settings" size={12} />
+                        </button>
+                      </div>
+
+                      {/* 常驻状态：运行中 Badge 或服务计数 */}
                       {projectRunning > 0 ? (
-                        <span className="mono rounded-full bg-[var(--grn-soft)] px-1.5 py-0.2 text-[10px] font-semibold text-[var(--grn)]">
+                        <span className="mono rounded-md bg-[var(--grn-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--grn)] tracking-tight">
                           {t("{n} 运行", { n: projectRunning })}
                         </span>
                       ) : (
                         <span className="mono text-[10px] text-[var(--dim)]">
-                          {t("{n} 服务", { n: p.profiles.length })}
+                          {p.profiles.length}
                         </span>
                       )}
+
                       <button
                         type="button"
-                        className="p-0.5 text-[var(--dim)] hover:text-[var(--blu)] rounded"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onAddServiceToProject) onAddServiceToProject(p.project);
-                        }}
-                        title={t("为项目「{name}」添加服务/环境", { name: p.project })}
-                      >
-                        <Icon name="plus" size={11} />
-                      </button>
-                      <button
-                        type="button"
-                        className="p-0.5 text-[var(--dim)] hover:text-[var(--txt)] rounded"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onManageProject) onManageProject(p.project);
-                        }}
-                        title={t("项目信息、路径与管理")}
-                      >
-                        <Icon name="settings" size={11} />
-                      </button>
-                      <button
-                        type="button"
-                        className="p-0.5 text-[var(--dim)] hover:text-[var(--txt)]"
+                        className="p-1 text-[var(--dim)] hover:text-[var(--txt)] transition-colors rounded"
                         onClick={(e) => toggleCollapse(p.project, e)}
                         title={isCollapsed ? t("展开服务列表") : t("折叠服务列表")}
                       >
-                        <Icon name={isCollapsed ? "right" : "down"} size={11} />
+                        <Icon name={isCollapsed ? "right" : "down"} size={12} />
                       </button>
                     </div>
                   </div>
 
-                  {/* 展开时显示项目下的各服务/profile */}
+                  {/* 展开时显示项目下的各服务/profile：精细层次排版对标图 1 */}
                   {!isCollapsed && (
-                    <div className="ml-3 mt-0.5 space-y-0.5 border-l border-[var(--line2)] pl-2">
+                    <div className="ml-3.5 mt-1 space-y-0.5 border-l border-[var(--line)]/70 pl-2">
                       {p.profiles.map((s) => {
                         const active = view === "detail" && sel?.project === p.project && sel?.profile === s.profile;
                         const svc = s.service || s.profile;
                         const env = s.env_name || s.profile;
                         const envTone = ENV_TONE[env] ?? "mut";
+                        // 智能名称处理：消除 default default 冗余，保持主谓清晰
+                        const displayName = svc === "default" && p.project ? `${p.project}` : svc;
+
                         return (
                           <button
                             key={s.profile}
-                            className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors ${
+                            className={`group/item flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-all ${
                               active
-                                ? "bg-[var(--bg3)] text-[var(--blu)] font-medium"
-                                : "text-[var(--mut)] hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+                                ? "bg-[var(--bg3)] text-[var(--blu)] font-medium shadow-xs"
+                                : "text-[var(--mut)] hover:bg-[var(--bg2)]/80 hover:text-[var(--txt)]"
                             }`}
                             onClick={() => onSelect(p.project, s.profile)}
                             title={t("进入 {key} 详情与日志", { key: `${p.project}/${svc} @ ${env} (${s.profile})` })}
                           >
                             <span className={`dot dot-${s.state} flex-none`} />
-                            <span className="min-w-0 flex-1 truncate font-medium">{svc}</span>
-                            <span
-                              className="mono flex-none rounded border px-1 py-px text-[9px] leading-3"
-                              style={{
-                                color: `var(--${envTone})`,
-                                borderColor: `color-mix(in oklab, var(--${envTone}) 35%, transparent)`,
-                                background: `color-mix(in oklab, var(--${envTone}) 10%, transparent)`,
-                              }}
-                              title={t("环境: {env}", { env })}
-                            >
-                              {env}
+                            <span className="min-w-0 flex-1 truncate font-medium text-[12.5px] tracking-tight">
+                              {displayName}
                             </span>
-                            <span className="mono text-[10px] text-[var(--dim)] flex-none">
+                            {/* 环境徽标（当与名称不重复时清晰标出） */}
+                            {env && (
+                              <span
+                                className="mono flex-none rounded px-1.5 py-px text-[9.5px] leading-3 font-semibold uppercase tracking-wider"
+                                style={{
+                                  color: `var(--${envTone})`,
+                                  backgroundColor: `color-mix(in oklab, var(--${envTone}) 12%, transparent)`,
+                                }}
+                                title={t("环境: {env}", { env })}
+                              >
+                                {env}
+                              </span>
+                            )}
+                            {/* 右侧轻量时间或状态指示（对标图 1 中的 12h, 2d） */}
+                            <span className="mono text-[11px] text-[var(--dim)] group-hover/item:text-[var(--txt)] flex-none transition-colors">
                               {s.state === "running" && s.uptime_ms != null
                                 ? shortUptime(s.uptime_ms) || "0s"
-                                : t(STATE_LABEL[s.state] ?? s.state)}
+                                : s.state === "idle"
+                                  ? ""
+                                  : t(STATE_LABEL[s.state] ?? s.state)}
                             </span>
                           </button>
                         );

@@ -17,6 +17,7 @@ import ToastHost from "./lib/ToastHost.jsx";
 import RegisterModal from "./lib/RegisterModal.jsx";
 import { useMediaQuery } from "./lib/useMediaQuery.js";
 import ProjectManageModal from "./lib/ProjectManageModal.jsx";
+import CommandPalette from "./lib/CommandPalette.jsx";
 import Icon from "./lib/Icon.jsx";
 
 const TABS = [
@@ -45,6 +46,7 @@ export default function App() {
   const [manageProject, setManageProject] = useState(null);
   const [settings, setSettings] = useState({ notifications: true, log_lines: 5000 });
   const [online, setOnline] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("lifecycle-sidebar-collapsed") === "1";
@@ -243,6 +245,35 @@ export default function App() {
     }
   }
 
+  const currentProjectProfiles = useMemo(
+    () => projects.find((p) => p.project === sel.project)?.profiles ?? [],
+    [projects, sel.project]
+  );
+
+  // 全局快捷键监听（⌘K 打开命令面板，⌘R 重启，⌘B 快速编译）
+  useEffect(() => {
+    function handleKeyDown(e) {
+      const isCmd = e.metaKey || e.ctrlKey;
+      if (isCmd && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowCommandPalette((v) => !v);
+        return;
+      }
+      const isInput = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+      if (isInput) return;
+
+      if (isCmd && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        if (current) restart();
+      } else if (isCmd && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        if (current && !isBusy) compileQuick();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [current, isBusy, restart, compileQuick]);
+
   return (
     <div className="flex h-full">
       {isMobile && mobileNav && (
@@ -335,117 +366,125 @@ export default function App() {
           <>
             <div className="border-b border-[var(--line)] bg-[var(--bg1)] p-2 sm:p-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between">
-                <StatusCard status={current} project={sel.project} onRefresh={refresh} onSelect={openDetail} />
+                <StatusCard
+                  status={current}
+                  project={sel.project}
+                  profiles={currentProjectProfiles}
+                  onRefresh={refresh}
+                  onSelect={openDetail}
+                  onAddProfile={(p) => {
+                    setSelectedProject(p);
+                    setRegisterKind("service");
+                    setShowRegister(true);
+                  }}
+                />
 
-                {/* 运行与编译操作区分开展示 */}
-                <div className="flex flex-wrap items-center justify-end gap-1 md:gap-3">
-                  <div className="flex items-center gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-1 py-0.5 md:gap-1.5 md:px-2 md:py-1">
-                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
-                      {t("运行")}
-                    </span>
-                    <button
-                      className="btn btn-success btn-sm"
-                      disabled={running || isBusy}
-                      onClick={start}
-                      title={t("启动服务并等待就绪检查")}
-                    >
-                      <Icon name="play" size={12} />
-                      <span className="hidden md:inline">{t("启动")}</span>
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      disabled={running || isBusy}
-                      onClick={startFast}
-                      title={t("跳过等待就绪，直接拉起")}
-                    >
-                      <Icon name="zap" size={12} />
-                      <span className="hidden md:inline">{t("快速")}</span>
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      disabled={!running || isBusy}
-                      onClick={stop}
-                      title={t("停止服务")}
-                    >
-                      <Icon name="stop" size={12} />
-                      <span className="hidden md:inline">{t("停止")}</span>
-                    </button>
-                    <button
-                      className="btn btn-warn btn-sm"
-                      disabled={isBusy}
-                      onClick={restart}
-                      title={t("重启服务")}
-                    >
-                      <Icon name="restart" size={12} />
-                      <span className="hidden md:inline">{t("重启")}</span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
-                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
-                      {t("编译")}
-                    </span>
-                    {compiling ? (
-                      <button className="btn btn-danger btn-sm" onClick={cancelCompile}>
-                        <span className="spinner" />
-                        {t("取消编译…")}
-                      </button>
-                    ) : (
-                      <>
+                {/* 运行与编译操作区分开展示（聚合为分段主次按钮，消除零乱） */}
+                <div className="flex flex-wrap items-center justify-end gap-2 md:gap-3">
+                  {/* 运行控制组（Segmented Running Control） */}
+                  <div className="flex items-center rounded-xl border border-[var(--line)] bg-[var(--bg2)]/80 p-1 shadow-xs">
+                    {running ? (
+                      <div className="flex items-center gap-1">
                         <button
-                          className="btn btn-primary btn-sm"
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--red-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--red)] transition-all hover:bg-[var(--red)] hover:text-white"
                           disabled={isBusy}
-                          onClick={compileQuick}
-                          title={t("增量快速编译")}
+                          onClick={stop}
+                          title={t("停止当前运行中的服务")}
                         >
-                          <Icon name="compile" size={12} />
-                          <span className="hidden md:inline">{t("快速编译")}</span>
+                          <Icon name="stop" size={13} />
+                          <span>{t("停止")}</span>
                         </button>
                         <button
-                          className="btn btn-ghost btn-sm"
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--bg1)] px-3 py-1.5 text-xs font-semibold text-[var(--amb)] transition-all hover:bg-[var(--amb-soft)] border border-[var(--line)]"
+                          disabled={isBusy}
+                          onClick={restart}
+                          title={t("重启当前服务 (⌘R)")}
+                        >
+                          <Icon name="restart" size={13} />
+                          <span>{t("重启")}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--grn)] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-all hover:opacity-90"
+                          disabled={isBusy}
+                          onClick={start}
+                          title={t("启动服务并等待就绪检测")}
+                        >
+                          <Icon name="play" size={13} />
+                          <span>{t("启动")}</span>
+                        </button>
+                        <button
+                          className="flex items-center gap-1 rounded-lg bg-[var(--bg1)] px-2.5 py-1.5 text-xs font-medium text-[var(--mut)] hover:text-[var(--txt)] border border-[var(--line)]"
+                          disabled={isBusy}
+                          onClick={startFast}
+                          title={t("快速启动（跳过就绪检查，直接拉起）")}
+                        >
+                          <Icon name="zap" size={12} className="text-[var(--amb)]" />
+                          <span>{t("快速")}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 编译与打包控制组（Segmented Build Control） */}
+                  <div className="flex items-center rounded-xl border border-[var(--line)] bg-[var(--bg2)]/80 p-1 shadow-xs">
+                    {compiling ? (
+                      <button className="flex items-center gap-1.5 rounded-lg bg-[var(--red-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--red)]" onClick={cancelCompile}>
+                        <span className="spinner" />
+                        <span>{t("取消编译…")}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--blu)] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-all hover:opacity-90"
+                          disabled={isBusy}
+                          onClick={compileQuick}
+                          title={t("增量快速编译 (⌘B)")}
+                        >
+                          <Icon name="compile" size={13} />
+                          <span>{t("快速编译")}</span>
+                        </button>
+                        <button
+                          className="flex items-center gap-1 rounded-lg bg-[var(--bg1)] px-2 py-1.5 text-xs font-medium text-[var(--mut)] hover:text-[var(--txt)] border border-[var(--line)]"
                           disabled={isBusy}
                           onClick={() => setShowPartial(true)}
                           title={t("指定模块部分编译")}
                         >
                           <Icon name="grid" size={12} />
-                          <span className="hidden md:inline">{t("部分")}</span>
+                          <span>{t("部分")}</span>
                         </button>
                         <button
-                          className="btn btn-ghost btn-sm"
+                          className="flex items-center gap-1 rounded-lg bg-[var(--bg1)] px-2 py-1.5 text-xs font-medium text-[var(--mut)] hover:text-[var(--txt)] border border-[var(--line)]"
                           disabled={isBusy}
                           onClick={compileFull}
                           title={t("全量完整编译")}
                         >
                           <Icon name="boxes" size={12} />
-                          <span className="hidden md:inline">{t("全量")}</span>
+                          <span>{t("全量")}</span>
                         </button>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg2)]/60 px-2 py-1">
-                    <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wider text-[var(--dim)] md:inline">
-                      {t("产物")}
-                    </span>
-                    {packaging ? (
-                      <button className="btn btn-danger btn-sm" onClick={cancelCompile} title={t("取消正在进行的打包")}>
-                        <span className="spinner" />
-                        {t("取消打包…")}
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        disabled={isBusy || !current?.compile_package}
-                        onClick={compilePackage}
-                        title={
-                          current?.compile_package
-                            ? t("打包产物（app/bundle/dist，按 compile.package 配置）")
-                            : t("未配置打包命令（compile.package）")
-                        }
-                      >
-                        <Icon name="pkg" size={12} />
-                        <span className="hidden md:inline">{t("打包")}</span>
-                      </button>
+                        {packaging ? (
+                          <button className="flex items-center gap-1.5 rounded-lg bg-[var(--red-soft)] px-2.5 py-1.5 text-xs font-semibold text-[var(--red)]" onClick={cancelCompile}>
+                            <span className="spinner" />
+                            <span>{t("取消…")}</span>
+                          </button>
+                        ) : (
+                          <button
+                            className="flex items-center gap-1 rounded-lg bg-[var(--bg1)] px-2 py-1.5 text-xs font-medium text-[var(--mut)] hover:text-[var(--txt)] border border-[var(--line)] disabled:opacity-40"
+                            disabled={isBusy || !current?.compile_package}
+                            onClick={compilePackage}
+                            title={
+                              current?.compile_package
+                                ? t("打包产物（compile.package）")
+                                : t("未配置打包命令（compile.package）")
+                            }
+                          >
+                            <Icon name="pkg" size={12} />
+                            <span>{t("打包")}</span>
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -488,6 +527,8 @@ export default function App() {
                   profile={sel.profile}
                   maxLines={settings.log_lines ?? 5000}
                   initialSource={logSource}
+                  currentPort={current?.port}
+                  onRestart={restart}
                 />
               ) : tab === "errors" ? (
                 <ErrorsPanel result={currentErrors} />
@@ -566,6 +607,26 @@ export default function App() {
           onRefresh={refresh}
         />
       )}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        projects={projects}
+        currentProject={sel.project}
+        currentProfile={sel.profile}
+        onSelectService={(proj, prof) => openDetail(proj, prof)}
+        onNavigate={(v) => {
+          setView(v);
+          if (v !== "services") setSelectedProject(null);
+        }}
+        onStart={start}
+        onStop={stop}
+        onRestart={restart}
+        onCompile={compileQuick}
+        onToggleTheme={() => {
+          const isDark = document.documentElement.classList.contains("dark");
+          adoptTheme(isDark ? "light" : "dark");
+        }}
+      />
       <ToastHost />
     </div>
   );

@@ -14,7 +14,7 @@ const STATE_COLOR = {
   idle: "var(--mut)",
 };
 
-export default function StatusCard({ status, project, onRefresh, onSelect }) {
+export default function StatusCard({ status, project, profiles = [], onRefresh, onSelect, onAddProfile }) {
   const { t } = useI18n();
   const [, setNow] = useState(Date.now());
   const [renaming, setRenaming] = useState(false);
@@ -23,6 +23,7 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
   const [renamingEnv, setRenamingEnv] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
   const [savingEnv, setSavingEnv] = useState(false);
+  const [showEnvDropdown, setShowEnvDropdown] = useState(false);
 
   useEffect(() => {
     const t2 = setInterval(() => setNow(Date.now()), 1000);
@@ -91,17 +92,82 @@ export default function StatusCard({ status, project, onRefresh, onSelect }) {
           >
             <Icon name="edit" size={12} />
           </button>
-          <button
-            type="button"
-            className="rounded bg-[var(--bg3)] border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--mut)] mono font-medium transition-colors hover:border-[var(--blu)] hover:text-[var(--blu)]"
-            title={t("修改环境名称")}
-            onClick={() => {
-              setNewEnvName(currentEnv);
-              setRenamingEnv(true);
-            }}
-          >
-            {currentEnv}
-          </button>
+          {/* 环境切换下拉框（支持快速切换 Dev / Test / Prod 环境） */}
+          <div className="relative">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded bg-[var(--bg3)] border border-[var(--line)] px-2.5 py-0.5 text-xs text-[var(--txt)] mono font-semibold transition-all hover:border-[var(--blu)] hover:text-[var(--blu)] shadow-xs"
+              title={t("当前环境: {env}，点击切换或管理环境", { env: currentEnv })}
+              onClick={() => setShowEnvDropdown((v) => !v)}
+            >
+              <span>{currentEnv}</span>
+              <Icon name="down" size={11} className="text-[var(--dim)]" />
+            </button>
+
+            {showEnvDropdown && (
+              <div
+                className="absolute left-0 top-full z-30 mt-1 min-w-[180px] rounded-lg border border-[var(--line)] bg-[var(--bg1)] p-1 shadow-lg"
+                onMouseLeave={() => setShowEnvDropdown(false)}
+              >
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--dim)]">
+                  {t("切换环境")}
+                </div>
+                {profiles.map((p) => {
+                  const pEnv = p.env_name || p.profile;
+                  const isActive = p.profile === status.profile;
+                  return (
+                    <button
+                      key={p.profile}
+                      type="button"
+                      className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors ${
+                        isActive
+                          ? "bg-[var(--blu-soft)] font-semibold text-[var(--blu)]"
+                          : "text-[var(--txt)] hover:bg-[var(--bg2)]"
+                      }`}
+                      onClick={() => {
+                        setShowEnvDropdown(false);
+                        if (onSelect && p.profile !== status.profile) {
+                          onSelect(project, p.profile);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`dot dot-${p.state} flex-none`} />
+                        <span className="truncate mono">{pEnv}</span>
+                      </div>
+                      {p.port && <span className="mono text-[10px] text-[var(--dim)]">:{p.port}</span>}
+                    </button>
+                  );
+                })}
+                <div className="my-1 border-t border-[var(--line)]" />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-[var(--mut)] hover:bg-[var(--bg2)] hover:text-[var(--txt)]"
+                  onClick={() => {
+                    setShowEnvDropdown(false);
+                    setNewEnvName(currentEnv);
+                    setRenamingEnv(true);
+                  }}
+                >
+                  <Icon name="edit" size={12} />
+                  <span>{t("重命名当前环境")}</span>
+                </button>
+                {onAddProfile && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-[var(--blu)] hover:bg-[var(--blu-soft)]"
+                    onClick={() => {
+                      setShowEnvDropdown(false);
+                      onAddProfile(project);
+                    }}
+                  >
+                    <Icon name="plus" size={12} />
+                    <span>{t("添加新环境 / 服务")}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <span className="mono truncate text-xs text-[var(--dim)]" title={project}>
             ({project})
           </span>
