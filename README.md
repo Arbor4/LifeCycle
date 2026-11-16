@@ -216,7 +216,7 @@ Notes:
 
 * The MCP whitelist is **global** — manage it on the MCP page. An empty selection falls back to the default policy (everything except `reload_config`); `prefix*` wildcards are supported.
 * `{targets}` in a `partial` command is replaced with the comma-joined target list.
-* After editing, click **Reload config** in the UI (or call `reload_config`) — no process-manager restart needed.
+* After editing, click **Reload config** in the UI (or call `reload_config`) for an immediate refresh. Edits written by other processes (an editor, a separate stdio MCP server) are hot-reloaded automatically within ~2s — including registry additions/removals in `~/.lifecycle/projects.json` — and the UI updates live over SSE.
 
 ***
 
@@ -435,6 +435,7 @@ node scripts/http-add-service-e2e.mjs  # add-service API: create/validate/start/
 node scripts/http-clear-logs-e2e.mjs  # clear-logs API: truncate/keep-appending/scope validation
 node scripts/http-raw-config-e2e.mjs  # raw config save: hot reload / invalid TOML / workdir confinement
 node scripts/http-mcp-connections-e2e.mjs  # live MCP connections: stdio process / HTTP session deltas
+node scripts/http-config-watch-e2e.mjs  # external toml/registry edits: hot reload + SSE push + stdio session sync
 npm --prefix ui run dev         # frontend HMR (backend on 39517)
 ```
 

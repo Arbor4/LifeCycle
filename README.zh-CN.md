@@ -207,7 +207,7 @@ stop_timeout_ms = 5000              # SIGTERM 后的宽限期，超时 SIGKILL �
 要点：
 - MCP 白名单为**全局**配置，在 MCP 页管理；空选择回退默认策略（除 `reload_config` 外全部），支持 `前缀*` 通配。
 - `partial` 命令中的 `{targets}` 会被替换为逗号连接的目标列表。
-- 改完配置在界面点「重载配置」或调 `reload_config`，无需重启进程管理。
+- 改完配置在界面点「重载配置」或调 `reload_config` 立即生效；外部进程（编辑器、另一个 stdio MCP 进程）写入的改动约 2 秒内自动热重载（含 `~/.lifecycle/projects.json` 的注册/注销），界面经 SSE 实时更新。
 
 ---
 
@@ -424,6 +424,7 @@ node scripts/http-add-service-e2e.mjs  # 添加服务 API：创建/校验/启动
 node scripts/http-clear-logs-e2e.mjs  # 清空日志 API：截断/继续写入/范围校验
 node scripts/http-raw-config-e2e.mjs  # 原文保存：热加载/非法 TOML 拒写/workdir 越界拒写
 node scripts/http-mcp-connections-e2e.mjs  # 真实连接数：stdio 进程 / HTTP 会话增量
+node scripts/http-config-watch-e2e.mjs  # 外部改配置/注册表：热重载 + SSE 推送 + stdio 会话同步
 npm --prefix ui run dev         # 前端热更新（需后端在 39517）
 ```
 

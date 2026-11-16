@@ -1467,6 +1467,7 @@ async fn restart_group(
 }
 
 pub async fn serve(ws: Arc<Workspace>, port: u16) -> anyhow::Result<()> {
+    tokio::spawn(lifecycle_core::workspace::watch_external(ws.clone()));
     let mut state = AppState::new(ws);
     state.port = port;
     let state = Arc::new(state);

@@ -1010,6 +1010,7 @@ pub fn streamable_http_service(
 
 pub async fn serve_stdio(config_paths: Vec<PathBuf>) -> anyhow::Result<()> {
     let ws = Arc::new(Workspace::load(&config_paths)?);
+    tokio::spawn(lifecycle_core::workspace::watch_external(ws.core.clone()));
     let server = LifeCycleServer::new(ws);
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;

@@ -46,6 +46,10 @@ pub struct Workspace {
     registry: Registry,
     groups: GroupStore,
     call_log: Arc<CallLog>,
+    console: bool,
+    from_registry: Mutex<HashSet<String>>,
+    registry_errors: Mutex<HashSet<PathBuf>>,
+    mtimes: Mutex<HashMap<PathBuf, std::time::SystemTime>>,
 }
 
 fn home() -> PathBuf {
@@ -91,6 +95,10 @@ impl Workspace {
             registry,
             groups,
             call_log: Arc::new(CallLog::new()),
+            console: with_registry,
+            from_registry: Mutex::new(HashSet::new()),
+            registry_errors: Mutex::new(HashSet::new()),
+            mtimes: Mutex::new(HashMap::new()),
         };
         let mut loaded: HashSet<PathBuf> = HashSet::new();
         for path in config_paths {
@@ -103,8 +111,9 @@ impl Workspace {
                     continue;
                 }
                 match ws.add(&path) {
-                    Ok(_) => {
+                    Ok(name) => {
                         loaded.insert(canonical(&path));
+                        ws.from_registry.lock().unwrap().insert(name);
                     }
                     Err(e) => eprintln!("lifecycle: skip registered project {}: {e}", path.display()),
                 }
@@ -173,6 +182,7 @@ impl Workspace {
     pub fn register(&self, config_path: &Path) -> Result<String> {
         let name = self.add(config_path)?;
         self.registry.add(config_path)?;
+        self.from_registry.lock().unwrap().insert(name.clone());
         Ok(name)
     }
 
@@ -182,10 +192,73 @@ impl Workspace {
             .remove(name)
             .ok_or_else(|| Error::NotFound(format!("project '{name}'")))?;
         self.hubs.lock().unwrap().remove(name);
+        self.from_registry.lock().unwrap().remove(name);
         if let Some(path) = self.paths.lock().unwrap().remove(name) {
             let _ = self.registry.remove(&path);
         }
         Ok(())
+    }
+
+    /// Pick up edits made by other processes (a stdio MCP server, an editor):
+    /// reload configs whose mtime changed and sync registry additions/removals.
+    /// Engines held by a running operation are skipped and retried next tick.
+    /// Returns true when anything changed.
+    pub fn sync_external(&self) -> bool {
+        let mut changed = false;
+        if self.console {
+            let registered = self.registry.paths();
+            let desired: HashSet<PathBuf> = registered.iter().map(|p| canonical(p)).collect();
+            for path in &registered {
+                match self.add(path) {
+                    Ok(name) => {
+                        self.from_registry.lock().unwrap().insert(name);
+                        self.registry_errors.lock().unwrap().remove(path);
+                        changed = true;
+                    }
+                    Err(Error::Busy(_)) => {}
+                    Err(e) => {
+                        if self.registry_errors.lock().unwrap().insert(path.clone()) {
+                            eprintln!("lifecycle: skip registered project {}: {e}", path.display());
+                        }
+                    }
+                }
+            }
+            let stale: Vec<String> = self
+                .from_registry
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|name| {
+                    self.paths
+                        .lock()
+                        .unwrap()
+                        .get(*name)
+                        .map(|p| !desired.contains(&canonical(p)))
+                        .unwrap_or(true)
+                })
+                .cloned()
+                .collect();
+            for name in stale {
+                let _ = self.remove(&name);
+                changed = true;
+            }
+        }
+        for (name, engine) in self.snapshot() {
+            let Ok(mut guard) = engine.try_lock() else { continue };
+            let path = guard.config_path().to_path_buf();
+            let Ok(mtime) = std::fs::metadata(&path).and_then(|m| m.modified()) else {
+                continue;
+            };
+            if self.mtimes.lock().unwrap().get(&path) == Some(&mtime) {
+                continue;
+            }
+            if guard.reload_config().is_ok() {
+                self.mtimes.lock().unwrap().insert(path, mtime);
+                self.forget_hub(&name);
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// Log hub without taking the engine mutex: log reads/streaming stay
@@ -273,6 +346,17 @@ impl Workspace {
     }
 }
 
+/// Poll for external config/registry edits so long-lived consoles (desktop,
+/// HTTP) and stdio MCP sessions hot-reload what other processes wrote.
+pub async fn watch_external(ws: Arc<Workspace>) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tick.tick().await;
+        ws.sync_external();
+    }
+}
+
 /// Discover lifecycle.toml files up to two levels under a directory.
 pub fn scan_projects(dir: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
@@ -291,4 +375,72 @@ pub fn scan_projects(dir: &Path) -> Vec<PathBuf> {
     found.sort();
     found.dedup();
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ONE: &str = r#"
+[project]
+name = "watched"
+
+[profiles.default]
+service = "web"
+
+[profiles.default.start]
+command = "sleep 1"
+"#;
+
+    const TWO: &str = r#"
+[project]
+name = "watched"
+
+[profiles.default]
+service = "web"
+
+[profiles.default.start]
+command = "sleep 1"
+
+[profiles.desktop]
+service = "desktop"
+
+[profiles.desktop.start]
+command = "sleep 2"
+"#;
+
+    #[test]
+    fn sync_external_reloads_edited_config() {
+        let dir = std::env::temp_dir().join(format!("lc-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lifecycle.toml");
+        std::fs::write(&path, ONE).unwrap();
+        let ws = Workspace::load(std::slice::from_ref(&path)).unwrap();
+        let engine = ws.engine("watched").unwrap();
+        assert!(ws.sync_external());
+        assert_eq!(engine.blocking_lock().list().unwrap().len(), 1);
+        std::fs::write(&path, TWO).unwrap();
+        assert!(ws.sync_external());
+        assert_eq!(engine.blocking_lock().list().unwrap().len(), 2);
+        assert!(!ws.sync_external());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sync_external_survives_invalid_toml() {
+        let dir = std::env::temp_dir().join(format!("lc-watch-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lifecycle.toml");
+        std::fs::write(&path, ONE).unwrap();
+        let ws = Workspace::load(std::slice::from_ref(&path)).unwrap();
+        let engine = ws.engine("watched").unwrap();
+        assert!(ws.sync_external());
+        std::fs::write(&path, "[project\nname = broken").unwrap();
+        assert!(!ws.sync_external());
+        assert_eq!(engine.blocking_lock().list().unwrap().len(), 1);
+        std::fs::write(&path, TWO).unwrap();
+        assert!(ws.sync_external());
+        assert_eq!(engine.blocking_lock().list().unwrap().len(), 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
