@@ -65,7 +65,14 @@ fn registry_add_dedup_remove_and_prune() {
 
 #[test]
 fn profile_patch_empty_string_clears_optional_keys() {
-    use lifecycle_core::config::{update_profile, ProfilePatch};
+    use lifecycle_core::config::{update_profile, CompilePatch, ProfilePatch};
+    fn cp(command: &str) -> CompilePatch {
+        CompilePatch {
+            command: command.into(),
+            parser: None,
+            timeout_ms: None,
+        }
+    }
     let tmp = tempfile::tempdir().unwrap();
     let path = write(tmp.path());
     let set = ProfilePatch {
@@ -75,7 +82,7 @@ fn profile_patch_empty_string_clears_optional_keys() {
         restart_command: Some("echo restart".into()),
         ready_pattern: Some("READY".into()),
         ready_timeout_ms: Some(5000),
-        compile_partial: Some(("echo partial".into(), None)),
+        compile_partial: Some(cp("echo partial")),
         ..Default::default()
     };
     update_profile(&path, "default", &set).unwrap();
@@ -100,8 +107,8 @@ fn profile_patch_empty_string_clears_optional_keys() {
         ready_pattern: Some("".into()),
         ready_port: Some(0),
         ready_timeout_ms: Some(0),
-        compile_quick: Some(("".into(), None)),
-        compile_partial: Some(("".into(), None)),
+        compile_quick: Some(cp("")),
+        compile_partial: Some(cp("")),
         ..Default::default()
     };
     update_profile(&path, "default", &clear).unwrap();
@@ -120,5 +127,39 @@ fn profile_patch_empty_string_clears_optional_keys() {
     }
     assert!(text.contains("command = \"echo hi\""), "start command preserved");
     assert!(text.contains("# 启动命令"), "comments preserved");
+    Config::load(&path).unwrap();
+}
+
+#[test]
+fn compile_patch_sets_and_clears_timeout_ms() {
+    use lifecycle_core::config::{update_profile, CompilePatch, ProfilePatch};
+    let tmp = tempfile::tempdir().unwrap();
+    let path = write(tmp.path());
+    let set = ProfilePatch {
+        compile_package: Some(CompilePatch {
+            command: "npx tauri build --bundles dmg".into(),
+            parser: Some("generic".into()),
+            timeout_ms: Some(1_800_000),
+        }),
+        ..Default::default()
+    };
+    update_profile(&path, "default", &set).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[profiles.default.compile.package]"));
+    assert!(text.contains("timeout_ms = 1800000"), "timeout written");
+
+    // timeout_ms=0 恢复默认；省略的 parser 保留现值。
+    let reset = ProfilePatch {
+        compile_package: Some(CompilePatch {
+            command: "npx tauri build --bundles dmg".into(),
+            parser: None,
+            timeout_ms: Some(0),
+        }),
+        ..Default::default()
+    };
+    update_profile(&path, "default", &reset).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("timeout_ms"), "timeout cleared to default");
+    assert!(text.contains("parser = \"generic\""), "omitted parser preserved");
     Config::load(&path).unwrap();
 }

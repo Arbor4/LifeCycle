@@ -246,12 +246,21 @@ pub struct ProfilePatch {
     pub restart_command: Option<String>,
     pub ready_pattern: Option<String>,
     pub ready_port: Option<u16>,
+    /// Some(0) restores the default timeout by removing the configured value.
     pub ready_timeout_ms: Option<u64>,
-    /// (command, parser)
-    pub compile_quick: Option<(String, Option<String>)>,
-    pub compile_partial: Option<(String, Option<String>)>,
-    pub compile_full: Option<(String, Option<String>)>,
-    pub compile_package: Option<(String, Option<String>)>,
+    pub compile_quick: Option<CompilePatch>,
+    pub compile_partial: Option<CompilePatch>,
+    pub compile_full: Option<CompilePatch>,
+    pub compile_package: Option<CompilePatch>,
+}
+
+/// One compile-slot patch: command + optional parser + optional timeout override.
+#[derive(Debug, Clone)]
+pub struct CompilePatch {
+    pub command: String,
+    pub parser: Option<String>,
+    /// None keeps the current value; Some(0) removes it (falls back to 300000).
+    pub timeout_ms: Option<u64>,
 }
 
 fn ensure_table<'a>(doc: &'a mut toml_edit::DocumentMut, keys: &[&str]) -> &'a mut toml_edit::Table {
@@ -316,6 +325,17 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| Error::Config(format!("cannot parse {}: {e}", path.display())))?;
     let existed = doc.get("profiles").and_then(|p| p.get(profile)).is_some();
+    // start 是必填段：否则报难懂的 TOML missing field。
+    if !existed
+        && patch
+            .start_command
+            .as_deref()
+            .map_or(true, |c| c.trim().is_empty())
+    {
+        return Err(Error::Config(format!(
+            "profile '{profile}' does not exist; provide start_command to create it"
+        )));
+    }
 
     // 可选字段传空串/0 表示「清空」（删除键），None 表示「保持不变」
     let base = ["profiles", profile];
@@ -407,15 +427,24 @@ pub fn update_profile(path: &Path, profile: &str, patch: &ProfilePatch) -> Resul
         ("full", &patch.compile_full),
         ("package", &patch.compile_package),
     ] {
-        if let Some((cmd, parser)) = spec {
-            if cmd.trim().is_empty() {
+        if let Some(cp) = spec {
+            if cp.command.trim().is_empty() {
                 remove_key(&mut doc, &["profiles", profile, "compile", kind]);
                 remove_table_if_empty(&mut doc, &["profiles", profile, "compile"]);
             } else {
                 let t = ensure_table(&mut doc, &["profiles", profile, "compile", kind]);
-                t["command"] = toml_edit::value(cmd.as_str());
-                if let Some(p) = parser {
+                t["command"] = toml_edit::value(cp.command.as_str());
+                if let Some(p) = &cp.parser {
                     t["parser"] = toml_edit::value(p.as_str());
+                }
+                match cp.timeout_ms {
+                    Some(0) => {
+                        t.remove("timeout_ms");
+                    }
+                    Some(ms) => {
+                        t["timeout_ms"] = toml_edit::value(ms as i64);
+                    }
+                    None => {}
                 }
             }
         }

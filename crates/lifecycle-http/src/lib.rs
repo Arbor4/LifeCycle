@@ -396,10 +396,10 @@ async fn add_service(
                 ready_pattern: body.ready_pattern.clone(),
                 ready_port: body.ready_port,
                 ready_timeout_ms: body.ready_timeout_ms,
-                compile_quick: body.compile_quick.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
-                compile_partial: body.compile_partial.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
-                compile_full: body.compile_full.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
-                compile_package: body.compile_package.filter(|s| !s.trim().is_empty()).map(|c| (c, None)),
+                compile_quick: body.compile_quick.filter(|s| !s.trim().is_empty()).map(plain_compile),
+                compile_partial: body.compile_partial.filter(|s| !s.trim().is_empty()).map(plain_compile),
+                compile_full: body.compile_full.filter(|s| !s.trim().is_empty()).map(plain_compile),
+                compile_package: body.compile_package.filter(|s| !s.trim().is_empty()).map(plain_compile),
             };
             lifecycle_core::config::update_profile(&path, &name, &patch)?;
             engine.lock().await.reload_config()?;
@@ -407,6 +407,15 @@ async fn add_service(
         },
     )
     .await
+}
+
+/// HTTP 表单只传命令字符串；parser/timeout 保持配置中的现值。
+fn plain_compile(command: String) -> lifecycle_core::config::CompilePatch {
+    lifecycle_core::config::CompilePatch {
+        command,
+        parser: None,
+        timeout_ms: None,
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -483,10 +492,10 @@ async fn update_service_profile(
                 ready_pattern: body.ready_pattern,
                 ready_port: body.ready_port,
                 ready_timeout_ms: body.ready_timeout_ms,
-                compile_quick: body.compile_quick.map(|c| (c, None)),
-                compile_partial: body.compile_partial.map(|c| (c, None)),
-                compile_full: body.compile_full.map(|c| (c, None)),
-                compile_package: body.compile_package.map(|c| (c, None)),
+                compile_quick: body.compile_quick.map(plain_compile),
+                compile_partial: body.compile_partial.map(plain_compile),
+                compile_full: body.compile_full.map(plain_compile),
+                compile_package: body.compile_package.map(plain_compile),
             };
             lifecycle_core::config::update_profile(&path, &profile, &patch)?;
             engine.lock().await.reload_config()?;

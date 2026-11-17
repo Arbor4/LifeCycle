@@ -328,6 +328,8 @@ pub struct CompileSpec {
     pub command: String,
     /// maven|gradle|typescript|cargo|go|generic
     pub parser: Option<String>,
+    /// Compile timeout in milliseconds (0 restores the 300000 default; omit to keep the current value).
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -338,10 +340,18 @@ pub enum CompileInput {
 }
 
 impl CompileInput {
-    pub fn into_parts(self) -> (String, Option<String>) {
+    pub fn into_parts(self) -> lifecycle_core::config::CompilePatch {
         match self {
-            Self::Simple(cmd) => (cmd, None),
-            Self::Detailed(spec) => (spec.command, spec.parser),
+            Self::Simple(command) => lifecycle_core::config::CompilePatch {
+                command,
+                parser: None,
+                timeout_ms: None,
+            },
+            Self::Detailed(spec) => lifecycle_core::config::CompilePatch {
+                command: spec.command,
+                parser: spec.parser,
+                timeout_ms: spec.timeout_ms,
+            },
         }
     }
 }
@@ -769,7 +779,7 @@ impl LifeCycleServer {
         .await
     }
 
-    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 8 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, [打包] compile_package, plus workdir, env, ready_port, ready_pattern. Omitted fields are unchanged; empty string (0 for port/timeout) clears an optional field. Preserves existing formatting and reloads hot.")]
+    #[tool(description = "Configure a service profile in lifecycle.toml (creates if not existing). Configures all 8 button action commands: [启动] start_command, [快速] fast_start_command, [停止] stop_command, [重启] restart_command, [快速编译] compile_quick, [部分编译] compile_partial, [全量编译] compile_full, [打包] compile_package, plus workdir, env, ready_port, ready_pattern. Compile fields accept a plain string or { command, parser, timeout_ms } (timeout_ms 0 restores the 300000 default). Omitted fields are unchanged; empty string (0 for port/timeout) clears an optional field. Preserves existing formatting and reloads hot.")]
     async fn configure_service(
         &self,
         Parameters(req): Parameters<ConfigureServiceReq>,
